@@ -230,10 +230,11 @@
         fill: true
       }];
 
+      const defaultTarget = 80; // Example target
       if (showTarget && sortedRecords[0]?.$Target) {
         datasets.push({
           label: 'Target',
-          data: Array(labels.length).fill(sortedRecords[0].$Target),
+          data: Array(labels.length).fill(sortedRecords[0]?.$Target || defaultTarget),
           borderColor: 'red',
           borderWidth: 2,
           borderDash: [5, 5],
