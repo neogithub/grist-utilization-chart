@@ -12,17 +12,26 @@
       padding: 16px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
-    select {
+    select, button {
       margin: 5px;
       padding: 8px;
       border-radius: 4px;
       border: 1px solid #ccc;
       min-width: 120px;
     }
+    button {
+      background: #f0f0f0;
+      cursor: pointer;
+    }
+    button.active {
+      background: #4CAF50;
+      color: white;
+    }
     .filters {
       margin-bottom: 20px;
       display: flex;
       gap: 10px;
+      flex-wrap: wrap;
     }
     .chart-container {
       position: relative;
@@ -35,10 +44,19 @@
       background-color: #f8f9fa;
       border-radius: 4px;
     }
+    .view-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
   </style>
 </head>
 <body>
   <div id="status">Initializing...</div>
+  <div class="view-controls">
+    <button id="barView" class="active">Bar Chart</button>
+    <button id="trendView">Trend Analysis</button>
+  </div>
   <div class="filters">
     <select id="yearFilter">
       <option value="all">All Years</option>
@@ -49,27 +67,30 @@
     <select id="departmentFilter">
       <option value="all">All Departments</option>
     </select>
+    <select id="nameFilter">
+      <option value="all">All Names</option>
+    </select>
   </div>
   <div class="chart-container">
     <canvas id="utilizationChart"></canvas>
   </div>
 
   <script>
-    // Global variables to store state
     let currentRecords = [];
     let currentFilters = {
       year: 'all',
       quarter: 'all',
-      department: 'all'
+      department: 'all',
+      name: 'all'
     };
+    let currentView = 'bar';
+    let chart = null;
 
     function updateStatus(message) {
       document.getElementById('status').textContent = message;
     }
 
-    let chart = null;
-
-    function initializeChart(data) {
+    function createBarChart(data) {
       const ctx = document.getElementById('utilizationChart').getContext('2d');
       
       if (chart) {
@@ -110,35 +131,94 @@
       });
     }
 
+    function createTrendChart(records) {
+      const ctx = document.getElementById('utilizationChart').getContext('2d');
+      
+      if (chart) {
+        chart.destroy();
+      }
+
+      // Sort records by year and quarter
+      const sortedRecords = _.sortBy(records, [
+        r => r.Year,
+        r => r.Quarter.substring(1) // Sort by quarter number
+      ]);
+
+      // Create labels combining year and quarter
+      const labels = sortedRecords.map(r => `${r.Year} ${r.Quarter}`);
+      
+      // Get billable percentages
+      const billableData = sortedRecords.map(r => r.Billable);
+
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Billable % Trend',
+            data: billableData,
+            borderColor: '#4CAF50',
+            backgroundColor: 'rgba(76, 175, 80, 0.1)',
+            tension: 0.1,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 100,
+              title: {
+                display: true,
+                text: 'Billable %'
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Time Period'
+              }
+            }
+          },
+          plugins: {
+            title: {
+              display: true,
+              text: 'Utilization Trend'
+            }
+          }
+        }
+      });
+    }
+
     function updateFilters(records) {
       const years = [...new Set(records.map(r => r.Year))].sort();
       const quarters = [...new Set(records.map(r => r.Quarter))].sort();
       const departments = [...new Set(records.map(r => r.Department))].sort();
+      const names = [...new Set(records.map(r => r.Name.trim()))].sort();
 
       const yearFilter = document.getElementById('yearFilter');
       const quarterFilter = document.getElementById('quarterFilter');
       const departmentFilter = document.getElementById('departmentFilter');
+      const nameFilter = document.getElementById('nameFilter');
 
-      // Clear existing options except "All"
+      // Clear and update filters
       yearFilter.innerHTML = '<option value="all">All Years</option>';
       quarterFilter.innerHTML = '<option value="all">All Quarters</option>';
       departmentFilter.innerHTML = '<option value="all">All Departments</option>';
+      nameFilter.innerHTML = '<option value="all">All Names</option>';
 
-      // Add new options
-      years.forEach(year => {
-        yearFilter.add(new Option(year, year));
-      });
-      quarters.forEach(quarter => {
-        quarterFilter.add(new Option(quarter, quarter));
-      });
-      departments.forEach(dept => {
-        departmentFilter.add(new Option(dept, dept));
-      });
+      years.forEach(year => yearFilter.add(new Option(year, year)));
+      quarters.forEach(quarter => quarterFilter.add(new Option(quarter, quarter)));
+      departments.forEach(dept => departmentFilter.add(new Option(dept, dept)));
+      names.forEach(name => nameFilter.add(new Option(name, name)));
 
-      // Set initial values
+      // Set values
       yearFilter.value = currentFilters.year;
       quarterFilter.value = currentFilters.quarter;
       departmentFilter.value = currentFilters.department;
+      nameFilter.value = currentFilters.name;
     }
 
     function processData(records) {
@@ -153,36 +233,49 @@
       if (currentFilters.department !== 'all') {
         filtered = filtered.filter(r => r.Department === currentFilters.department);
       }
+      if (currentFilters.name !== 'all') {
+        filtered = filtered.filter(r => r.Name.trim() === currentFilters.name);
+      }
 
-      const processed = _.map(
-        _.groupBy(filtered, r => r.Name),
-        (group, name) => ({
-          name,
-          department: group[0].Department,
-          billable: _.meanBy(group, r => r.Billable),
-          nonBillable: _.meanBy(group, r => r.Non_Billable)
-        })
-      );
-
-      initializeChart(processed);
+      if (currentView === 'bar') {
+        const processed = _.map(
+          _.groupBy(filtered, r => r.Name),
+          (group, name) => ({
+            name,
+            department: group[0].Department,
+            billable: _.meanBy(group, r => r.Billable),
+            nonBillable: _.meanBy(group, r => r.Non_Billable)
+          })
+        );
+        createBarChart(processed);
+      } else {
+        createTrendChart(filtered);
+      }
     }
 
     // Initialize Grist
     grist.ready();
     
-    // Set up event listeners
-    document.getElementById('yearFilter').addEventListener('change', (e) => {
-      currentFilters.year = e.target.value;
+    // Set up event listeners for filters
+    ['year', 'quarter', 'department', 'name'].forEach(filterId => {
+      document.getElementById(filterId + 'Filter').addEventListener('change', (e) => {
+        currentFilters[filterId] = e.target.value;
+        processData(currentRecords);
+      });
+    });
+
+    // Set up view toggle listeners
+    document.getElementById('barView').addEventListener('click', (e) => {
+      currentView = 'bar';
+      document.getElementById('barView').classList.add('active');
+      document.getElementById('trendView').classList.remove('active');
       processData(currentRecords);
     });
-    
-    document.getElementById('quarterFilter').addEventListener('change', (e) => {
-      currentFilters.quarter = e.target.value;
-      processData(currentRecords);
-    });
-    
-    document.getElementById('departmentFilter').addEventListener('change', (e) => {
-      currentFilters.department = e.target.value;
+
+    document.getElementById('trendView').addEventListener('click', (e) => {
+      currentView = 'trend';
+      document.getElementById('trendView').classList.add('active');
+      document.getElementById('barView').classList.remove('active');
       processData(currentRecords);
     });
 
