@@ -55,6 +55,14 @@
   </div>
 
   <script>
+    // Global variables to store state
+    let currentRecords = [];
+    let currentFilters = {
+      year: 'all',
+      quarter: 'all',
+      department: 'all'
+    };
+
     function updateStatus(message) {
       document.getElementById('status').textContent = message;
     }
@@ -126,23 +134,24 @@
       departments.forEach(dept => {
         departmentFilter.add(new Option(dept, dept));
       });
+
+      // Set initial values
+      yearFilter.value = currentFilters.year;
+      quarterFilter.value = currentFilters.quarter;
+      departmentFilter.value = currentFilters.department;
     }
 
     function processData(records) {
-      const yearFilter = document.getElementById('yearFilter').value;
-      const quarterFilter = document.getElementById('quarterFilter').value;
-      const departmentFilter = document.getElementById('departmentFilter').value;
-
       let filtered = records;
       
-      if (yearFilter !== 'all') {
-        filtered = filtered.filter(r => r.Year === parseInt(yearFilter));
+      if (currentFilters.year !== 'all') {
+        filtered = filtered.filter(r => r.Year === parseInt(currentFilters.year));
       }
-      if (quarterFilter !== 'all') {
-        filtered = filtered.filter(r => r.Quarter === quarterFilter);
+      if (currentFilters.quarter !== 'all') {
+        filtered = filtered.filter(r => r.Quarter === currentFilters.quarter);
       }
-      if (departmentFilter !== 'all') {
-        filtered = filtered.filter(r => r.Department === departmentFilter);
+      if (currentFilters.department !== 'all') {
+        filtered = filtered.filter(r => r.Department === currentFilters.department);
       }
 
       const processed = _.map(
@@ -162,14 +171,19 @@
     grist.ready();
     
     // Set up event listeners
-    document.getElementById('yearFilter').addEventListener('change', () => {
-      grist.onRecords(records => processData(records));
+    document.getElementById('yearFilter').addEventListener('change', (e) => {
+      currentFilters.year = e.target.value;
+      processData(currentRecords);
     });
-    document.getElementById('quarterFilter').addEventListener('change', () => {
-      grist.onRecords(records => processData(records));
+    
+    document.getElementById('quarterFilter').addEventListener('change', (e) => {
+      currentFilters.quarter = e.target.value;
+      processData(currentRecords);
     });
-    document.getElementById('departmentFilter').addEventListener('change', () => {
-      grist.onRecords(records => processData(records));
+    
+    document.getElementById('departmentFilter').addEventListener('change', (e) => {
+      currentFilters.department = e.target.value;
+      processData(currentRecords);
     });
 
     // Subscribe to Grist data
@@ -179,6 +193,7 @@
         return;
       }
 
+      currentRecords = records;
       updateFilters(records);
       processData(records);
       updateStatus('Chart ready');
