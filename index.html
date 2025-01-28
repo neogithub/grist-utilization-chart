@@ -32,6 +32,7 @@
       display: flex;
       gap: 10px;
       flex-wrap: wrap;
+      align-items: center;
     }
     .chart-container {
       position: relative;
@@ -48,6 +49,15 @@
       display: flex;
       gap: 10px;
       margin-bottom: 10px;
+      align-items: center;
+    }
+    .checkbox-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .checkbox-wrapper input[type="checkbox"] {
+      margin: 0;
     }
   </style>
 </head>
@@ -56,6 +66,10 @@
   <div class="view-controls">
     <button id="barView" class="active">Bar Chart</button>
     <button id="trendView">Trend Analysis</button>
+    <div class="checkbox-wrapper">
+      <input type="checkbox" id="showTarget" checked>
+      <label for="showTarget">Show Target</label>
+    </div>
   </div>
   <div class="filters">
     <select id="yearFilter">
@@ -84,6 +98,7 @@
       name: 'all'
     };
     let currentView = 'bar';
+    let showTarget = true;
     let chart = null;
 
     function updateStatus(message) {
@@ -96,6 +111,9 @@
       if (chart) {
         chart.destroy();
       }
+
+      // Get the maximum target for annotations
+      const maxTarget = Math.max(...data.map(d => d.target || 0));
 
       chart = new Chart(ctx, {
         type: 'bar',
@@ -126,6 +144,24 @@
             x: {
               stacked: false
             }
+          },
+          plugins: {
+            annotation: showTarget ? {
+              annotations: data.map((d, index) => ({
+                type: 'line',
+                scaleID: 'y',
+                value: d.target,
+                borderColor: 'rgba(255, 0, 0, 0.7)',
+                borderWidth: 2,
+                label: {
+                  enabled: true,
+                  content: 'Target: ' + d.target + '%',
+                  position: 'start'
+                },
+                xMin: index - 0.4,
+                xMax: index + 0.4
+              }))
+            } : {}
           }
         }
       });
@@ -141,27 +177,41 @@
       // Sort records by year and quarter
       const sortedRecords = _.sortBy(records, [
         r => r.Year,
-        r => r.Quarter.substring(1) // Sort by quarter number
+        r => r.Quarter.substring(1)
       ]);
 
-      // Create labels combining year and quarter
       const labels = sortedRecords.map(r => `${r.Year} ${r.Quarter}`);
-      
-      // Get billable percentages
       const billableData = sortedRecords.map(r => r.Billable);
+      
+      // Get target for the selected person/department
+      const target = sortedRecords[0]?.Target;
+
+      const datasets = [{
+        label: 'Billable % Trend',
+        data: billableData,
+        borderColor: '#4CAF50',
+        backgroundColor: 'rgba(76, 175, 80, 0.1)',
+        tension: 0.1,
+        fill: true
+      }];
+
+      if (showTarget && target) {
+        datasets.push({
+          label: 'Target %',
+          data: Array(labels.length).fill(target),
+          borderColor: 'rgba(255, 0, 0, 0.7)',
+          borderWidth: 2,
+          borderDash: [5, 5],
+          fill: false,
+          pointRadius: 0
+        });
+      }
 
       chart = new Chart(ctx, {
         type: 'line',
         data: {
           labels: labels,
-          datasets: [{
-            label: 'Billable % Trend',
-            data: billableData,
-            borderColor: '#4CAF50',
-            backgroundColor: 'rgba(76, 175, 80, 0.1)',
-            tension: 0.1,
-            fill: true
-          }]
+          datasets: datasets
         },
         options: {
           responsive: true,
@@ -203,7 +253,6 @@
       const departmentFilter = document.getElementById('departmentFilter');
       const nameFilter = document.getElementById('nameFilter');
 
-      // Clear and update filters
       yearFilter.innerHTML = '<option value="all">All Years</option>';
       quarterFilter.innerHTML = '<option value="all">All Quarters</option>';
       departmentFilter.innerHTML = '<option value="all">All Departments</option>';
@@ -214,7 +263,6 @@
       departments.forEach(dept => departmentFilter.add(new Option(dept, dept)));
       names.forEach(name => nameFilter.add(new Option(name, name)));
 
-      // Set values
       yearFilter.value = currentFilters.year;
       quarterFilter.value = currentFilters.quarter;
       departmentFilter.value = currentFilters.department;
@@ -244,7 +292,8 @@
             name,
             department: group[0].Department,
             billable: _.meanBy(group, r => r.Billable),
-            nonBillable: _.meanBy(group, r => r.Non_Billable)
+            nonBillable: _.meanBy(group, r => r.Non_Billable),
+            target: group[0].Target // Include target
           })
         );
         createBarChart(processed);
@@ -276,6 +325,12 @@
       currentView = 'trend';
       document.getElementById('trendView').classList.add('active');
       document.getElementById('barView').classList.remove('active');
+      processData(currentRecords);
+    });
+
+    // Target toggle listener
+    document.getElementById('showTarget').addEventListener('change', (e) => {
+      showTarget = e.target.checked;
       processData(currentRecords);
     });
 
