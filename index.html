@@ -6,14 +6,63 @@
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/2.1.0/chartjs-plugin-annotation.min.js"></script>
   <style>
-    /* Previous styles remain the same */
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    select, button {
+      margin: 5px;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      min-width: 120px;
+    }
+    button {
+      background: #f0f0f0;
+      cursor: pointer;
+    }
+    button.active {
+      background: #4CAF50;
+      color: white;
+    }
+    .filters {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .chart-container {
+      position: relative;
+      height: 400px;
+      width: 100%;
+    }
+    #status {
+      padding: 10px;
+      margin-bottom: 10px;
+      background-color: #f8f9fa;
+      border-radius: 4px;
+    }
+    .view-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+      align-items: center;
+    }
+    .checkbox-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .checkbox-wrapper input[type="checkbox"] {
+      margin: 0;
+    }
   </style>
 </head>
 <body>
   <div id="status">Initializing...</div>
-  <div id="debug" style="font-family: monospace; font-size: 12px; padding: 10px; background: #f5f5f5; margin-bottom: 10px;"></div>
   <div class="view-controls">
     <button id="barView" class="active">Bar Chart</button>
     <button id="trendView">Trend Analysis</button>
@@ -23,20 +72,37 @@
     </div>
   </div>
   <div class="filters">
-    <!-- Previous filters remain the same -->
+    <select id="yearFilter">
+      <option value="all">All Years</option>
+    </select>
+    <select id="quarterFilter">
+      <option value="all">All Quarters</option>
+    </select>
+    <select id="departmentFilter">
+      <option value="all">All Departments</option>
+    </select>
+    <select id="nameFilter">
+      <option value="all">All Names</option>
+    </select>
   </div>
   <div class="chart-container">
     <canvas id="utilizationChart"></canvas>
   </div>
 
   <script>
-    // Register the annotation plugin
-    Chart.register(ChartJS.Annotation);
+    let currentRecords = [];
+    let currentFilters = {
+      year: 'all',
+      quarter: 'all',
+      department: 'all',
+      name: 'all'
+    };
+    let currentView = 'bar';
+    let showTarget = true;
+    let chart = null;
 
-    function debug(msg, data) {
-      const debugDiv = document.getElementById('debug');
-      debugDiv.innerHTML = `${msg}: ${JSON.stringify(data, null, 2)}`;
-      console.log(msg, data);
+    function updateStatus(message) {
+      document.getElementById('status').textContent = message;
     }
 
     function createBarChart(data) {
@@ -46,47 +112,37 @@
         chart.destroy();
       }
 
-      debug('Creating bar chart with data', {
-        showTarget,
-        sampleData: data[0],
-        totalRecords: data.length
-      });
+      const datasets = [
+        {
+          label: 'Billable %',
+          data: data.map(d => d.billable),
+          backgroundColor: '#4CAF50',
+        },
+        {
+          label: 'Non-Billable %',
+          data: data.map(d => d.nonBillable),
+          backgroundColor: '#FF9800',
+        }
+      ];
 
-      const annotations = {};
       if (showTarget) {
-        annotations.annotations = data.map((d, index) => ({
+        datasets.push({
+          label: 'Target',
+          data: data.map(d => d.target),
           type: 'line',
-          yMin: d.target,
-          yMax: d.target,
-          xMin: index - 0.35,
-          xMax: index + 0.35,
           borderColor: 'red',
           borderWidth: 2,
-          borderDash: [5, 5],
-          label: {
-            enabled: true,
-            content: `Target: ${d.target}%`,
-            position: 'start'
-          }
-        }));
+          pointRadius: 0,
+          fill: false,
+          order: 0
+        });
       }
 
       chart = new Chart(ctx, {
         type: 'bar',
         data: {
           labels: data.map(d => d.name.trim()),
-          datasets: [
-            {
-              label: 'Billable %',
-              data: data.map(d => d.billable),
-              backgroundColor: '#4CAF50',
-            },
-            {
-              label: 'Non-Billable %',
-              data: data.map(d => d.nonBillable),
-              backgroundColor: '#FF9800',
-            }
-          ]
+          datasets: datasets
         },
         options: {
           responsive: true,
@@ -100,9 +156,6 @@
             x: {
               stacked: false
             }
-          },
-          plugins: {
-            annotation: annotations
           }
         }
       });
@@ -115,12 +168,6 @@
         chart.destroy();
       }
 
-      debug('Creating trend chart with records', {
-        showTarget,
-        sampleRecord: records[0],
-        totalRecords: records.length
-      });
-
       const sortedRecords = _.sortBy(records, [
         r => r.Year,
         r => r.Quarter.substring(1)
@@ -128,8 +175,7 @@
 
       const labels = sortedRecords.map(r => `${r.Year} ${r.Quarter}`);
       const billableData = sortedRecords.map(r => r.Billable);
-      const target = sortedRecords[0]?.Target;
-
+      
       const datasets = [{
         label: 'Billable % Trend',
         data: billableData,
@@ -139,33 +185,16 @@
         fill: true
       }];
 
-      const annotations = {};
-      if (showTarget && target) {
+      if (showTarget && sortedRecords[0]?.Target) {
         datasets.push({
           label: 'Target %',
-          data: Array(labels.length).fill(target),
+          data: Array(labels.length).fill(sortedRecords[0].Target),
           borderColor: 'red',
           borderWidth: 2,
           borderDash: [5, 5],
           fill: false,
           pointRadius: 0
         });
-
-        annotations.annotations = {
-          targetLine: {
-            type: 'line',
-            yMin: target,
-            yMax: target,
-            borderColor: 'red',
-            borderWidth: 2,
-            borderDash: [5, 5],
-            label: {
-              enabled: true,
-              content: `Target: ${target}%`,
-              position: 'start'
-            }
-          }
-        };
       }
 
       chart = new Chart(ctx, {
@@ -194,10 +223,40 @@
             }
           },
           plugins: {
-            annotation: annotations
+            title: {
+              display: true,
+              text: 'Utilization Trend'
+            }
           }
         }
       });
+    }
+
+    function updateFilters(records) {
+      const years = [...new Set(records.map(r => r.Year))].sort();
+      const quarters = [...new Set(records.map(r => r.Quarter))].sort();
+      const departments = [...new Set(records.map(r => r.Department))].sort();
+      const names = [...new Set(records.map(r => r.Name.trim()))].sort();
+
+      const yearFilter = document.getElementById('yearFilter');
+      const quarterFilter = document.getElementById('quarterFilter');
+      const departmentFilter = document.getElementById('departmentFilter');
+      const nameFilter = document.getElementById('nameFilter');
+
+      yearFilter.innerHTML = '<option value="all">All Years</option>';
+      quarterFilter.innerHTML = '<option value="all">All Quarters</option>';
+      departmentFilter.innerHTML = '<option value="all">All Departments</option>';
+      nameFilter.innerHTML = '<option value="all">All Names</option>';
+
+      years.forEach(year => yearFilter.add(new Option(year, year)));
+      quarters.forEach(quarter => quarterFilter.add(new Option(quarter, quarter)));
+      departments.forEach(dept => departmentFilter.add(new Option(dept, dept)));
+      names.forEach(name => nameFilter.add(new Option(name, name)));
+
+      yearFilter.value = currentFilters.year;
+      quarterFilter.value = currentFilters.quarter;
+      departmentFilter.value = currentFilters.department;
+      nameFilter.value = currentFilters.name;
     }
 
     function processData(records) {
@@ -215,13 +274,6 @@
       if (currentFilters.name !== 'all') {
         filtered = filtered.filter(r => r.Name.trim() === currentFilters.name);
       }
-
-      debug('Processing filtered data', {
-        originalCount: records.length,
-        filteredCount: filtered.length,
-        filters: currentFilters,
-        sampleRecord: filtered[0]
-      });
 
       if (currentView === 'bar') {
         const processed = _.map(
