@@ -1,48 +1,188 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <title>Grist Test</title>
-    <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <meta charset="utf-8">
+  <title>Utilization Chart</title>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    select {
+      margin: 5px;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      min-width: 120px;
+    }
+    .filters {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 10px;
+    }
+    .chart-container {
+      position: relative;
+      height: 400px;
+      width: 100%;
+    }
+    #status {
+      padding: 10px;
+      margin-bottom: 10px;
+      background-color: #f8f9fa;
+      border-radius: 4px;
+    }
+  </style>
 </head>
 <body>
-    <h1>Grist Connection Test</h1>
-    <div id="status"></div>
-    <div id="data"></div>
+  <div id="status">Initializing...</div>
+  <div class="filters">
+    <select id="yearFilter">
+      <option value="all">All Years</option>
+    </select>
+    <select id="quarterFilter">
+      <option value="all">All Quarters</option>
+    </select>
+    <select id="departmentFilter">
+      <option value="all">All Departments</option>
+    </select>
+  </div>
+  <div class="chart-container">
+    <canvas id="utilizationChart"></canvas>
+  </div>
 
-    <script>
-        function updateStatus(message) {
-            document.getElementById('status').innerHTML += "<br>" + new Date().toISOString() + ": " + message;
-        }
+  <script>
+    function updateStatus(message) {
+      document.getElementById('status').textContent = message;
+    }
 
-        updateStatus("Page loaded");
+    let chart = null;
 
-        // Correct way to use grist.ready()
-        grist.ready();
-        updateStatus("Called grist.ready()");
+    function initializeChart(data) {
+      const ctx = document.getElementById('utilizationChart').getContext('2d');
+      
+      if (chart) {
+        chart.destroy();
+      }
 
-        // Set up record handling
-        grist.onRecords(function(records) {
-            updateStatus("Received " + records.length + " records");
-            
-            // Display the data we're getting
-            const dataDiv = document.getElementById('data');
-            if (records && records.length > 0) {
-                dataDiv.innerHTML = "<h3>First Record Data:</h3>" +
-                    "<pre>" + JSON.stringify(records[0], null, 2) + "</pre>";
-                
-                // Log the structure
-                updateStatus("Record structure: " + Object.keys(records[0]).join(", "));
-            } else {
-                dataDiv.innerHTML = "<p>No records received</p>";
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: data.map(d => d.name.trim()),
+          datasets: [
+            {
+              label: 'Billable %',
+              data: data.map(d => d.billable),
+              backgroundColor: '#4CAF50',
+            },
+            {
+              label: 'Non-Billable %',
+              data: data.map(d => d.nonBillable),
+              backgroundColor: '#FF9800',
             }
-        });
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              stacked: false,
+              max: 100
+            },
+            x: {
+              stacked: false
+            }
+          }
+        }
+      });
+    }
 
-        // Add error handler
-        window.onerror = function(msg, url, lineNo, columnNo, error) {
-            updateStatus("ERROR: " + msg);
-            return false;
-        };
-    </script>
+    function updateFilters(records) {
+      const years = [...new Set(records.map(r => r.Year))].sort();
+      const quarters = [...new Set(records.map(r => r.Quarter))].sort();
+      const departments = [...new Set(records.map(r => r.Department))].sort();
+
+      const yearFilter = document.getElementById('yearFilter');
+      const quarterFilter = document.getElementById('quarterFilter');
+      const departmentFilter = document.getElementById('departmentFilter');
+
+      // Clear existing options except "All"
+      yearFilter.innerHTML = '<option value="all">All Years</option>';
+      quarterFilter.innerHTML = '<option value="all">All Quarters</option>';
+      departmentFilter.innerHTML = '<option value="all">All Departments</option>';
+
+      // Add new options
+      years.forEach(year => {
+        yearFilter.add(new Option(year, year));
+      });
+      quarters.forEach(quarter => {
+        quarterFilter.add(new Option(quarter, quarter));
+      });
+      departments.forEach(dept => {
+        departmentFilter.add(new Option(dept, dept));
+      });
+    }
+
+    function processData(records) {
+      const yearFilter = document.getElementById('yearFilter').value;
+      const quarterFilter = document.getElementById('quarterFilter').value;
+      const departmentFilter = document.getElementById('departmentFilter').value;
+
+      let filtered = records;
+      
+      if (yearFilter !== 'all') {
+        filtered = filtered.filter(r => r.Year === parseInt(yearFilter));
+      }
+      if (quarterFilter !== 'all') {
+        filtered = filtered.filter(r => r.Quarter === quarterFilter);
+      }
+      if (departmentFilter !== 'all') {
+        filtered = filtered.filter(r => r.Department === departmentFilter);
+      }
+
+      const processed = _.map(
+        _.groupBy(filtered, r => r.Name),
+        (group, name) => ({
+          name,
+          department: group[0].Department,
+          billable: _.meanBy(group, r => r.Billable),
+          nonBillable: _.meanBy(group, r => r.Non_Billable)
+        })
+      );
+
+      initializeChart(processed);
+    }
+
+    // Initialize Grist
+    grist.ready();
+    
+    // Set up event listeners
+    document.getElementById('yearFilter').addEventListener('change', () => {
+      grist.onRecords(records => processData(records));
+    });
+    document.getElementById('quarterFilter').addEventListener('change', () => {
+      grist.onRecords(records => processData(records));
+    });
+    document.getElementById('departmentFilter').addEventListener('change', () => {
+      grist.onRecords(records => processData(records));
+    });
+
+    // Subscribe to Grist data
+    grist.onRecords(records => {
+      if (!records || !records.length) {
+        updateStatus('No data available');
+        return;
+      }
+
+      updateFilters(records);
+      processData(records);
+      updateStatus('Chart ready');
+    });
+  </script>
 </body>
 </html>
