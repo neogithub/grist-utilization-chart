@@ -153,15 +153,20 @@
 
       // Add target line if enabled
       if (showTarget) {
-        datasets.push({
-          label: 'Target',
-          data: data.map(d => d.target),
-          type: 'line',
-          borderColor: 'red',
-          borderWidth: 2,
-          pointRadius: 0,
-          order: 1
-        });
+        const targetData = data.map(d => d.target);
+        if (targetData.some(t => t !== null)) {
+          datasets.push({
+            label: 'Target',
+            data: targetData,
+            type: 'line',
+            borderColor: 'red',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            fill: false,
+            pointRadius: 0,
+            order: 1
+          });
+        }
       }
 
       // Create chart
@@ -183,6 +188,17 @@
             x: {
               stacked: false
             }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const label = context.dataset.label || '';
+                  const value = context.parsed.y?.toFixed(1) || 0;
+                  return `${label}: ${value}%`;
+                }
+              }
+            }
           }
         }
       });
@@ -195,7 +211,6 @@
         chart.destroy();
       }
 
-      // Sort and prepare data
       const sortedRecords = _.sortBy(records, [
         r => r.Year,
         r => r.Quarter.substring(1)
@@ -203,8 +218,8 @@
 
       const labels = sortedRecords.map(r => `${r.Year} ${r.Quarter}`);
       const billableData = sortedRecords.map(r => r.Billable);
+      const target = parseFloat(sortedRecords[0]?.['$Target']) || null;
 
-      // Prepare datasets
       const datasets = [{
         label: 'Billable %',
         data: billableData,
@@ -214,11 +229,10 @@
         fill: true
       }];
 
-      // Add target line if enabled
-      if (showTarget && sortedRecords[0]?.Target) {
+      if (showTarget && target !== null) {
         datasets.push({
           label: 'Target',
-          data: Array(labels.length).fill(sortedRecords[0].Target),
+          data: Array(labels.length).fill(target),
           borderColor: 'red',
           borderWidth: 2,
           borderDash: [5, 5],
@@ -227,7 +241,6 @@
         });
       }
 
-      // Create chart
       chart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -250,6 +263,17 @@
               title: {
                 display: true,
                 text: 'Time Period'
+              }
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const label = context.dataset.label || '';
+                  const value = context.parsed.y?.toFixed(1) || 0;
+                  return `${label}: ${value}%`;
+                }
               }
             }
           }
@@ -308,7 +332,7 @@
             department: group[0].Department,
             billable: _.meanBy(group, r => r.Billable),
             nonBillable: _.meanBy(group, r => r.Non_Billable),
-            target: parseFloat(group[0].Target) || null
+            target: parseFloat(group[0]['$Target']) || null
           })
         );
         createBarChart(processed);
@@ -347,7 +371,6 @@
       processData(currentRecords);
     });
 
-    // Subscribe to Grist data
     grist.onRecords(records => {
       if (!records || !records.length) {
         updateStatus('No data available');
