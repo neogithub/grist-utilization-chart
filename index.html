@@ -18,14 +18,32 @@
     #chart {
       height: 400px;
     }
+    .debug-info {
+      padding: 10px;
+      background: #f5f5f5;
+      margin: 10px 0;
+      font-family: monospace;
+    }
   </style>
 </head>
 <body>
   <div id="root"></div>
+  <div id="debug" class="debug-info"></div>
   <script>
+    // Debug logging function
+    function debug(message, data) {
+      const debugDiv = document.getElementById('debug');
+      debugDiv.innerHTML += `<div>${message}: ${JSON.stringify(data)}</div>`;
+      console.log(message, data);
+    }
+
+    debug('Scripts loaded', { timestamp: new Date().toISOString() });
+
     const {
       BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
     } = Recharts;
+
+    debug('Recharts components loaded', { components: ['BarChart', 'Bar', 'XAxis', 'YAxis', 'CartesianGrid', 'Tooltip', 'Legend', 'ResponsiveContainer'] });
 
     function UtilizationChart() {
       const [data, setData] = React.useState([]);
@@ -41,17 +59,28 @@
       });
 
       React.useEffect(() => {
+        debug('Component mounted', { timestamp: new Date().toISOString() });
+        
         // Subscribe to Grist data
-        grist.ready({
-          requiredAccess: 'read',
-          columns: ['Year', 'Quarter', 'Name', 'Department', 'Billable', 'Non-Billable']
-        });
+        try {
+          grist.ready({
+            requiredAccess: 'read',
+            columns: ['Year', 'Quarter', 'Name', 'Department', 'Billable', 'Non-Billable']
+          });
+          debug('Grist ready called', { columns: ['Year', 'Quarter', 'Name', 'Department', 'Billable', 'Non-Billable'] });
+        } catch (error) {
+          debug('Error in grist.ready', { error: error.message });
+        }
 
         grist.onRecords(records => {
+          debug('Received records from Grist', { count: records.length, sample: records[0] });
+          
           // Process initial data and set up filter options
           const years = [...new Set(records.map(r => r.Year))];
           const quarters = [...new Set(records.map(r => r.Quarter))];
           const departments = [...new Set(records.map(r => r.Department))];
+          
+          debug('Processed unique values', { years, quarters, departments });
           
           setOptions({
             years,
@@ -65,6 +94,8 @@
       }, []);
 
       const processData = (records) => {
+        debug('Processing data', { recordCount: records.length, filters });
+        
         let filtered = records;
         
         // Apply filters
@@ -78,6 +109,8 @@
           filtered = filtered.filter(r => r.Department === filters.department);
         }
 
+        debug('After filtering', { filteredCount: filtered.length });
+
         // Calculate averages by person
         const processed = _.map(
           _.groupBy(filtered, 'Name'),
@@ -89,10 +122,12 @@
           })
         );
 
+        debug('Processed data', { processedCount: processed.length, sample: processed[0] });
         setData(processed);
       };
 
       const handleFilterChange = (filterType, value) => {
+        debug('Filter changed', { filterType, value });
         const newFilters = { ...filters, [filterType]: value };
         setFilters(newFilters);
         grist.onRecords(records => processData(records));
@@ -155,10 +190,15 @@
       ]);
     }
 
-    ReactDOM.render(
-      React.createElement(UtilizationChart),
-      document.getElementById('root')
-    );
+    try {
+      ReactDOM.render(
+        React.createElement(UtilizationChart),
+        document.getElementById('root')
+      );
+      debug('React component rendered', { timestamp: new Date().toISOString() });
+    } catch (error) {
+      debug('Error rendering React component', { error: error.message });
+    }
   </script>
 </body>
 </html>
