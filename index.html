@@ -8,56 +8,39 @@
 <body>
     <h1>Grist Connection Test</h1>
     <div id="status"></div>
+    <div id="data"></div>
 
     <script>
-        // Update status function
         function updateStatus(message) {
             document.getElementById('status').innerHTML += "<br>" + new Date().toISOString() + ": " + message;
         }
 
-        // Initial status
         updateStatus("Page loaded");
 
-        // Async function to handle Grist initialization
-        async function initGrist() {
-            try {
-                updateStatus("Attempting to initialize Grist...");
+        // Correct way to use grist.ready()
+        grist.ready();
+        updateStatus("Called grist.ready()");
+
+        // Set up record handling
+        grist.onRecords(function(records) {
+            updateStatus("Received " + records.length + " records");
+            
+            // Display the data we're getting
+            const dataDiv = document.getElementById('data');
+            if (records && records.length > 0) {
+                dataDiv.innerHTML = "<h3>First Record Data:</h3>" +
+                    "<pre>" + JSON.stringify(records[0], null, 2) + "</pre>";
                 
-                // Wait for Grist API to be ready
-                await grist.ready();
-                updateStatus("Grist initialized successfully");
-
-                // Set up the record subscription
-                grist.onRecords(function(records) {
-                    updateStatus("Received records from Grist: " + records.length);
-                    if (records && records.length > 0) {
-                        updateStatus("Sample record: " + JSON.stringify(records[0]));
-                    }
-                });
-
-                // Test table access
-                const tableId = await grist.selectedTable.getTableId();
-                updateStatus("Connected to table: " + tableId);
-
-            } catch (error) {
-                updateStatus("ERROR: " + error.message);
-                console.error(error);
+                // Log the structure
+                updateStatus("Record structure: " + Object.keys(records[0]).join(", "));
+            } else {
+                dataDiv.innerHTML = "<p>No records received</p>";
             }
-        }
-
-        // Check if grist is defined
-        if (typeof grist === 'undefined') {
-            updateStatus("ERROR: Grist API not found!");
-        } else {
-            updateStatus("Grist API found, initializing...");
-            initGrist().catch(err => {
-                updateStatus("ERROR in initialization: " + err.message);
-            });
-        }
+        });
 
         // Add error handler
         window.onerror = function(msg, url, lineNo, columnNo, error) {
-            updateStatus("GLOBAL ERROR: " + msg);
+            updateStatus("ERROR: " + msg);
             return false;
         };
     </script>
