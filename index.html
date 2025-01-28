@@ -123,11 +123,17 @@
       document.getElementById('status').textContent = message;
     }
 
+    function getTargetValue(record) {
+      // Try different possible field names for target
+      return record.Target ?? record.target ?? record.TARGET ?? null;
+    }
+
     function createBarChart(data) {
       log('Creating bar chart', {
         dataPoints: data.length,
         sampleData: data[0],
-        showTarget
+        showTarget,
+        availableFields: data[0] ? Object.keys(data[0]) : []
       });
 
       const ctx = document.getElementById('utilizationChart').getContext('2d');
@@ -151,16 +157,19 @@
 
       // Add target dataset if enabled
       if (showTarget) {
-        datasets.push({
-          label: 'Target %',
-          data: data.map(d => d.target),
-          type: 'line',
-          borderColor: 'rgba(255, 0, 0, 0.8)',
-          borderWidth: 2,
-          fill: false,
-          pointRadius: 0,
-          order: 0
-        });
+        const targetData = data.map(d => getTargetValue(d));
+        if (targetData.some(t => t !== null)) {
+          datasets.push({
+            label: 'Target %',
+            data: targetData,
+            type: 'line',
+            borderColor: 'rgba(255, 0, 0, 0.8)',
+            borderWidth: 2,
+            fill: false,
+            pointRadius: 0,
+            order: 0
+          });
+        }
       }
 
       chart = new Chart(ctx, {
@@ -194,7 +203,8 @@
       log('Creating trend chart', {
         records: records.length,
         sampleRecord: records[0],
-        showTarget
+        showTarget,
+        availableFields: records[0] ? Object.keys(records[0]) : []
       });
 
       const ctx = document.getElementById('utilizationChart').getContext('2d');
@@ -210,7 +220,7 @@
 
       const labels = sortedRecords.map(r => `${r.Year} ${r.Quarter}`);
       const billableData = sortedRecords.map(r => r.Billable);
-      const target = sortedRecords[0]?.Target;
+      const target = getTargetValue(sortedRecords[0]);
 
       const datasets = [{
         label: 'Billable %',
@@ -222,7 +232,7 @@
       }];
 
       // Add target line if enabled and target exists
-      if (showTarget && target) {
+      if (showTarget && target !== null) {
         datasets.push({
           label: 'Target %',
           data: Array(labels.length).fill(target),
@@ -304,7 +314,8 @@
       log('Processing data', {
         currentView,
         filters: currentFilters,
-        recordCount: records.length
+        recordCount: records.length,
+        sampleRecord: records[0]
       });
 
       let filtered = records;
@@ -330,7 +341,7 @@
             department: group[0].Department,
             billable: _.meanBy(group, r => r.Billable),
             nonBillable: _.meanBy(group, r => r.Non_Billable),
-            target: group[0].Target
+            target: getTargetValue(group[0])
           })
         );
         createBarChart(processed);
@@ -380,7 +391,8 @@
 
       log('Received records', {
         count: records.length,
-        sampleRecord: records[0]
+        sampleRecord: records[0],
+        availableFields: Object.keys(records[0])
       });
 
       currentRecords = records;
