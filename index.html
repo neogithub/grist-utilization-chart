@@ -311,11 +311,9 @@
     }
 
     function processData(records) {
-      log('Processing data', {
-        currentView,
-        filters: currentFilters,
-        recordCount: records.length,
-        sampleRecord: records[0]
+      log('Processing raw records', {
+        sampleRecord: records[0],
+        availableFields: records[0] ? Object.keys(records[0]) : []
       });
 
       let filtered = records;
@@ -336,14 +334,25 @@
       if (currentView === 'bar') {
         const processed = _.map(
           _.groupBy(filtered, r => r.Name),
-          (group, name) => ({
-            name,
-            department: group[0].Department,
-            billable: _.meanBy(group, r => r.Billable),
-            nonBillable: _.meanBy(group, r => r.Non_Billable),
-            target: getTargetValue(group[0])
-          })
+          (group, name) => {
+            const firstRecord = group[0];
+            return {
+              name,
+              department: firstRecord.Department,
+              billable: _.meanBy(group, r => r.Billable),
+              nonBillable: _.meanBy(group, r => r.Non_Billable),
+              // Try to access target field by possible names
+              target: firstRecord.Target_Billable || firstRecord.target_billable || 
+                     firstRecord.TargetBillable || firstRecord.targetBillable || 
+                     firstRecord.Target || firstRecord.target
+            };
+          }
         );
+
+        log('Processed data for bar chart', {
+          sampleProcessed: processed[0]
+        });
+
         createBarChart(processed);
       } else {
         createTrendChart(filtered);
