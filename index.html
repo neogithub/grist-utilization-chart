@@ -1,11 +1,21 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.1/Recharts.js"></script>
+  <meta charset="utf-8">
+  <title>Utilization Chart</title>
+  <!-- Load Grist Plugin API -->
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <!-- Load required libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.1/Recharts.js"></script>
   <style>
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
     select {
       margin: 5px;
       padding: 5px;
@@ -18,187 +28,206 @@
     #chart {
       height: 400px;
     }
-    .debug-info {
+    .error {
+      color: red;
       padding: 10px;
+      border: 1px solid red;
+      margin: 10px 0;
+    }
+    .debug {
       background: #f5f5f5;
+      padding: 10px;
       margin: 10px 0;
       font-family: monospace;
+      white-space: pre-wrap;
     }
   </style>
 </head>
 <body>
+  <!-- Add some initial content to verify the page is loading -->
+  <div>Loading utilization chart...</div>
   <div id="root"></div>
-  <div id="debug" class="debug-info"></div>
+  <div id="debug" class="debug"></div>
+
   <script>
-    // Debug logging function
-    function debug(message, data) {
-      const debugDiv = document.getElementById('debug');
-      debugDiv.innerHTML += `<div>${message}: ${JSON.stringify(data)}</div>`;
-      console.log(message, data);
+    // Debug logging helper
+    function log(msg, data) {
+      const debug = document.getElementById('debug');
+      const time = new Date().toISOString();
+      debug.innerHTML += `[${time}] ${msg}\n${JSON.stringify(data, null, 2)}\n\n`;
+      console.log(msg, data);
     }
 
-    debug('Scripts loaded', { timestamp: new Date().toISOString() });
+    // Error handling helper
+    function showError(message) {
+      const root = document.getElementById('root');
+      root.innerHTML = `<div class="error">Error: ${message}</div>`;
+      log('Error occurred', { message });
+    }
 
-    const {
-      BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
-    } = Recharts;
-
-    debug('Recharts components loaded', { components: ['BarChart', 'Bar', 'XAxis', 'YAxis', 'CartesianGrid', 'Tooltip', 'Legend', 'ResponsiveContainer'] });
-
-    function UtilizationChart() {
-      const [data, setData] = React.useState([]);
-      const [filters, setFilters] = React.useState({
-        year: 'all',
-        quarter: 'all',
-        department: 'all'
-      });
-      const [options, setOptions] = React.useState({
-        years: [],
-        quarters: [],
-        departments: []
-      });
-
-      React.useEffect(() => {
-        debug('Component mounted', { timestamp: new Date().toISOString() });
+    // Wait for all dependencies to load
+    window.addEventListener('load', function() {
+      log('Page loaded', { timestamp: new Date().toISOString() });
+      
+      try {
+        // Verify all required globals are available
+        if (!window.React) throw new Error('React not loaded');
+        if (!window.ReactDOM) throw new Error('ReactDOM not loaded');
+        if (!window.Recharts) throw new Error('Recharts not loaded');
+        if (!window._) throw new Error('Lodash not loaded');
+        if (!window.grist) throw new Error('Grist API not loaded');
         
-        // Subscribe to Grist data
-        try {
-          grist.ready({
-            requiredAccess: 'read',
-            columns: ['Year', 'Quarter', 'Name', 'Department', 'Billable', 'Non-Billable']
-          });
-          debug('Grist ready called', { columns: ['Year', 'Quarter', 'Name', 'Department', 'Billable', 'Non-Billable'] });
-        } catch (error) {
-          debug('Error in grist.ready', { error: error.message });
-        }
-
-        grist.onRecords(records => {
-          debug('Received records from Grist', { count: records.length, sample: records[0] });
-          
-          // Process initial data and set up filter options
-          const years = [...new Set(records.map(r => r.Year))];
-          const quarters = [...new Set(records.map(r => r.Quarter))];
-          const departments = [...new Set(records.map(r => r.Department))];
-          
-          debug('Processed unique values', { years, quarters, departments });
-          
-          setOptions({
-            years,
-            quarters,
-            departments
-          });
-
-          // Process and set the data
-          processData(records);
+        log('All dependencies loaded', {
+          react: !!window.React,
+          reactDOM: !!window.ReactDOM,
+          recharts: !!window.Recharts,
+          lodash: !!window._,
+          grist: !!window.grist
         });
-      }, []);
 
-      const processData = (records) => {
-        debug('Processing data', { recordCount: records.length, filters });
-        
-        let filtered = records;
-        
-        // Apply filters
-        if (filters.year !== 'all') {
-          filtered = filtered.filter(r => r.Year === parseInt(filters.year));
-        }
-        if (filters.quarter !== 'all') {
-          filtered = filtered.filter(r => r.Quarter === filters.quarter);
-        }
-        if (filters.department !== 'all') {
-          filtered = filtered.filter(r => r.Department === filters.department);
+        const {
+          BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+        } = Recharts;
+
+        function UtilizationChart() {
+          const [data, setData] = React.useState([]);
+          const [filters, setFilters] = React.useState({
+            year: 'all',
+            quarter: 'all',
+            department: 'all'
+          });
+          const [options, setOptions] = React.useState({
+            years: [],
+            quarters: [],
+            departments: []
+          });
+
+          React.useEffect(() => {
+            log('Component mounted');
+            
+            grist.ready({
+              requiredAccess: 'read',
+              columns: ['Year', 'Quarter', 'Name', 'Department', 'Billable', 'Non-Billable']
+            }).then(() => {
+              log('Grist ready success');
+            }).catch(err => {
+              showError('Failed to initialize Grist: ' + err.message);
+            });
+
+            grist.onRecords(records => {
+              log('Received records', { count: records.length });
+              
+              const years = [...new Set(records.map(r => r.Year))];
+              const quarters = [...new Set(records.map(r => r.Quarter))];
+              const departments = [...new Set(records.map(r => r.Department))];
+              
+              setOptions({ years, quarters, departments });
+              processData(records);
+            });
+          }, []);
+
+          const processData = (records) => {
+            let filtered = records;
+            
+            if (filters.year !== 'all') {
+              filtered = filtered.filter(r => r.Year === parseInt(filters.year));
+            }
+            if (filters.quarter !== 'all') {
+              filtered = filtered.filter(r => r.Quarter === filters.quarter);
+            }
+            if (filters.department !== 'all') {
+              filtered = filtered.filter(r => r.Department === filters.department);
+            }
+
+            const processed = _.map(
+              _.groupBy(filtered, 'Name'),
+              (group, name) => ({
+                name,
+                department: group[0].Department,
+                billable: _.meanBy(group, 'Billable'),
+                nonBillable: _.meanBy(group, 'Non-Billable')
+              })
+            );
+
+            log('Processed data', { count: processed.length });
+            setData(processed);
+          };
+
+          const handleFilterChange = (filterType, value) => {
+            log('Filter changed', { filterType, value });
+            const newFilters = { ...filters, [filterType]: value };
+            setFilters(newFilters);
+            grist.onRecords(records => processData(records));
+          };
+
+          return React.createElement('div', null, [
+            React.createElement('div', { className: 'filters', key: 'filters' }, [
+              React.createElement('select', {
+                key: 'year',
+                value: filters.year,
+                onChange: (e) => handleFilterChange('year', e.target.value)
+              }, [
+                React.createElement('option', { value: 'all' }, 'All Years'),
+                ...options.years.map(year => 
+                  React.createElement('option', { value: year, key: year }, year)
+                )
+              ]),
+              React.createElement('select', {
+                key: 'quarter',
+                value: filters.quarter,
+                onChange: (e) => handleFilterChange('quarter', e.target.value)
+              }, [
+                React.createElement('option', { value: 'all' }, 'All Quarters'),
+                ...options.quarters.map(quarter => 
+                  React.createElement('option', { value: quarter, key: quarter }, quarter)
+                )
+              ]),
+              React.createElement('select', {
+                key: 'department',
+                value: filters.department,
+                onChange: (e) => handleFilterChange('department', e.target.value)
+              }, [
+                React.createElement('option', { value: 'all' }, 'All Departments'),
+                ...options.departments.map(dept => 
+                  React.createElement('option', { value: dept, key: dept }, dept)
+                )
+              ])
+            ]),
+            React.createElement(ResponsiveContainer, { width: '100%', height: 400, key: 'chart' },
+              React.createElement(BarChart, { data: data }, [
+                React.createElement(CartesianGrid, { strokeDasharray: '3 3', key: 'grid' }),
+                React.createElement(XAxis, { dataKey: 'name', key: 'xAxis' }),
+                React.createElement(YAxis, { key: 'yAxis' }),
+                React.createElement(Tooltip, { key: 'tooltip' }),
+                React.createElement(Legend, { key: 'legend' }),
+                React.createElement(Bar, { 
+                  dataKey: 'billable',
+                  fill: '#4CAF50',
+                  name: 'Billable %',
+                  key: 'billable'
+                }),
+                React.createElement(Bar, {
+                  dataKey: 'nonBillable',
+                  fill: '#FF9800',
+                  name: 'Non-Billable %',
+                  key: 'nonBillable'
+                })
+              ])
+            )
+          ]);
         }
 
-        debug('After filtering', { filteredCount: filtered.length });
-
-        // Calculate averages by person
-        const processed = _.map(
-          _.groupBy(filtered, 'Name'),
-          (group, name) => ({
-            name,
-            department: group[0].Department,
-            billable: _.meanBy(group, 'Billable'),
-            nonBillable: _.meanBy(group, 'Non-Billable')
-          })
+        // Render the React component
+        ReactDOM.render(
+          React.createElement(UtilizationChart),
+          document.getElementById('root')
         );
-
-        debug('Processed data', { processedCount: processed.length, sample: processed[0] });
-        setData(processed);
-      };
-
-      const handleFilterChange = (filterType, value) => {
-        debug('Filter changed', { filterType, value });
-        const newFilters = { ...filters, [filterType]: value };
-        setFilters(newFilters);
-        grist.onRecords(records => processData(records));
-      };
-
-      return React.createElement('div', null, [
-        React.createElement('div', { className: 'filters', key: 'filters' }, [
-          React.createElement('select', {
-            key: 'year',
-            value: filters.year,
-            onChange: (e) => handleFilterChange('year', e.target.value)
-          }, [
-            React.createElement('option', { value: 'all' }, 'All Years'),
-            ...options.years.map(year => 
-              React.createElement('option', { value: year, key: year }, year)
-            )
-          ]),
-          React.createElement('select', {
-            key: 'quarter',
-            value: filters.quarter,
-            onChange: (e) => handleFilterChange('quarter', e.target.value)
-          }, [
-            React.createElement('option', { value: 'all' }, 'All Quarters'),
-            ...options.quarters.map(quarter => 
-              React.createElement('option', { value: quarter, key: quarter }, quarter)
-            )
-          ]),
-          React.createElement('select', {
-            key: 'department',
-            value: filters.department,
-            onChange: (e) => handleFilterChange('department', e.target.value)
-          }, [
-            React.createElement('option', { value: 'all' }, 'All Departments'),
-            ...options.departments.map(dept => 
-              React.createElement('option', { value: dept, key: dept }, dept)
-            )
-          ])
-        ]),
-        React.createElement(ResponsiveContainer, { width: '100%', height: 400, key: 'chart' },
-          React.createElement(BarChart, { data: data }, [
-            React.createElement(CartesianGrid, { strokeDasharray: '3 3', key: 'grid' }),
-            React.createElement(XAxis, { dataKey: 'name', key: 'xAxis' }),
-            React.createElement(YAxis, { key: 'yAxis' }),
-            React.createElement(Tooltip, { key: 'tooltip' }),
-            React.createElement(Legend, { key: 'legend' }),
-            React.createElement(Bar, { 
-              dataKey: 'billable',
-              fill: '#4CAF50',
-              name: 'Billable %',
-              key: 'billable'
-            }),
-            React.createElement(Bar, {
-              dataKey: 'nonBillable',
-              fill: '#FF9800',
-              name: 'Non-Billable %',
-              key: 'nonBillable'
-            })
-          ])
-        )
-      ]);
-    }
-
-    try {
-      ReactDOM.render(
-        React.createElement(UtilizationChart),
-        document.getElementById('root')
-      );
-      debug('React component rendered', { timestamp: new Date().toISOString() });
-    } catch (error) {
-      debug('Error rendering React component', { error: error.message });
-    }
+        
+        log('React component rendered');
+      } catch (error) {
+        showError(error.message);
+      }
+    });
   </script>
 </body>
 </html>
