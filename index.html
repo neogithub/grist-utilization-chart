@@ -3,11 +3,10 @@
 <head>
   <meta charset="utf-8">
   <title>Utilization Chart</title>
+  <!-- Load dependencies -->
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.1.12/Recharts.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
   <style>
     body {
       margin: 0;
@@ -27,6 +26,7 @@
       gap: 10px;
     }
     .chart-container {
+      position: relative;
       height: 400px;
       width: 100%;
     }
@@ -40,155 +40,155 @@
 </head>
 <body>
   <div id="status">Initializing...</div>
-  <div id="root"></div>
+  <div class="filters">
+    <select id="yearFilter">
+      <option value="all">All Years</option>
+    </select>
+    <select id="quarterFilter">
+      <option value="all">All Quarters</option>
+    </select>
+    <select id="departmentFilter">
+      <option value="all">All Departments</option>
+    </select>
+  </div>
+  <div class="chart-container">
+    <canvas id="utilizationChart"></canvas>
+  </div>
 
   <script>
+    function updateStatus(message) {
+      document.getElementById('status').textContent = message;
+      console.log('Status:', message);
+    }
+
+    // Initialize chart with empty data
+    let chart = null;
+
+    function initializeChart(data) {
+      const ctx = document.getElementById('utilizationChart').getContext('2d');
+      
+      if (chart) {
+        chart.destroy();
+      }
+
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: data.map(d => d.name),
+          datasets: [
+            {
+              label: 'Billable %',
+              data: data.map(d => d.billable),
+              backgroundColor: '#4CAF50',
+            },
+            {
+              label: 'Non-Billable %',
+              data: data.map(d => d.nonBillable),
+              backgroundColor: '#FF9800',
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              stacked: false
+            },
+            x: {
+              stacked: false
+            }
+          }
+        }
+      });
+    }
+
+    function updateFilters(records) {
+      const years = [...new Set(records.map(r => r[0]))].sort();
+      const quarters = [...new Set(records.map(r => r[1]))].sort();
+      const departments = [...new Set(records.map(r => r[3]))].sort();
+
+      const yearFilter = document.getElementById('yearFilter');
+      const quarterFilter = document.getElementById('quarterFilter');
+      const departmentFilter = document.getElementById('departmentFilter');
+
+      // Clear existing options except "All"
+      yearFilter.innerHTML = '<option value="all">All Years</option>';
+      quarterFilter.innerHTML = '<option value="all">All Quarters</option>';
+      departmentFilter.innerHTML = '<option value="all">All Departments</option>';
+
+      // Add new options
+      years.forEach(year => {
+        yearFilter.add(new Option(year, year));
+      });
+      quarters.forEach(quarter => {
+        quarterFilter.add(new Option(quarter, quarter));
+      });
+      departments.forEach(dept => {
+        departmentFilter.add(new Option(dept, dept));
+      });
+    }
+
+    function processData(records) {
+      const yearFilter = document.getElementById('yearFilter').value;
+      const quarterFilter = document.getElementById('quarterFilter').value;
+      const departmentFilter = document.getElementById('departmentFilter').value;
+
+      let filtered = records;
+      
+      if (yearFilter !== 'all') {
+        filtered = filtered.filter(r => r[0] === parseInt(yearFilter));
+      }
+      if (quarterFilter !== 'all') {
+        filtered = filtered.filter(r => r[1] === quarterFilter);
+      }
+      if (departmentFilter !== 'all') {
+        filtered = filtered.filter(r => r[3] === departmentFilter);
+      }
+
+      const processed = _.map(
+        _.groupBy(filtered, r => r[2]), // Group by Name
+        (group, name) => ({
+          name,
+          department: group[0][3],
+          billable: _.meanBy(group, r => r[4]),
+          nonBillable: _.meanBy(group, r => r[5])
+        })
+      );
+
+      initializeChart(processed);
+    }
+
     // Initialize Grist
     grist.ready({
       requiredAccess: 'read'
     });
 
-    function updateStatus(message) {
-      document.getElementById('status').textContent = message;
-    }
+    // Set up event listeners
+    document.getElementById('yearFilter').addEventListener('change', () => {
+      grist.onRecords(records => processData(records));
+    });
+    document.getElementById('quarterFilter').addEventListener('change', () => {
+      grist.onRecords(records => processData(records));
+    });
+    document.getElementById('departmentFilter').addEventListener('change', () => {
+      grist.onRecords(records => processData(records));
+    });
 
-    window.addEventListener('load', function() {
-      updateStatus('Loading dependencies...');
-
-      const {
-        BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
-      } = Recharts;
-
-      function UtilizationChart() {
-        const [data, setData] = React.useState([]);
-        const [filters, setFilters] = React.useState({
-          year: 'all',
-          quarter: 'all',
-          department: 'all'
-        });
-        const [options, setOptions] = React.useState({
-          years: [],
-          quarters: [],
-          departments: []
-        });
-
-        React.useEffect(() => {
-          updateStatus('Connecting to Grist...');
-
-          grist.onRecords(records => {
-            updateStatus('Processing data...');
-            
-            if (!records || !records.length) {
-              updateStatus('No data available');
-              return;
-            }
-
-            // Extract unique values for filters from record data
-            const years = [...new Set(records.map(r => r[0]))].sort();
-            const quarters = [...new Set(records.map(r => r[1]))].sort();
-            const departments = [...new Set(records.map(r => r[3]))].sort();
-            
-            setOptions({ years, quarters, departments });
-            processData(records);
-            updateStatus('Chart ready');
-          });
-        }, []);
-
-        const processData = (records) => {
-          let filtered = records;
-          
-          if (filters.year !== 'all') {
-            filtered = filtered.filter(r => r[0] === parseInt(filters.year));
-          }
-          if (filters.quarter !== 'all') {
-            filtered = filtered.filter(r => r[1] === filters.quarter);
-          }
-          if (filters.department !== 'all') {
-            filtered = filtered.filter(r => r[3] === filters.department);
-          }
-
-          const processed = _.map(
-            _.groupBy(filtered, r => r[2]), // Group by Name
-            (group, name) => ({
-              name,
-              department: group[0][3],
-              billable: _.meanBy(group, r => r[4]),
-              nonBillable: _.meanBy(group, r => r[5])
-            })
-          );
-
-          setData(processed);
-        };
-
-        const handleFilterChange = (filterType, value) => {
-          const newFilters = { ...filters, [filterType]: value };
-          setFilters(newFilters);
-          grist.onRecords(records => processData(records));
-        };
-
-        return React.createElement('div', null, [
-          React.createElement('div', { className: 'filters', key: 'filters' }, [
-            React.createElement('select', {
-              key: 'year',
-              value: filters.year,
-              onChange: (e) => handleFilterChange('year', e.target.value)
-            }, [
-              React.createElement('option', { value: 'all' }, 'All Years'),
-              ...options.years.map(year => 
-                React.createElement('option', { value: year, key: year }, year)
-              )
-            ]),
-            React.createElement('select', {
-              key: 'quarter',
-              value: filters.quarter,
-              onChange: (e) => handleFilterChange('quarter', e.target.value)
-            }, [
-              React.createElement('option', { value: 'all' }, 'All Quarters'),
-              ...options.quarters.map(quarter => 
-                React.createElement('option', { value: quarter, key: quarter }, quarter)
-              )
-            ]),
-            React.createElement('select', {
-              key: 'department',
-              value: filters.department,
-              onChange: (e) => handleFilterChange('department', e.target.value)
-            }, [
-              React.createElement('option', { value: 'all' }, 'All Departments'),
-              ...options.departments.map(dept => 
-                React.createElement('option', { value: dept, key: dept }, dept)
-              )
-            ])
-          ]),
-          React.createElement('div', { className: 'chart-container' },
-            React.createElement(ResponsiveContainer, { width: '100%', height: '100%' },
-              React.createElement(BarChart, { data: data }, [
-                React.createElement(CartesianGrid, { strokeDasharray: '3 3', key: 'grid' }),
-                React.createElement(XAxis, { dataKey: 'name', key: 'xAxis' }),
-                React.createElement(YAxis, { key: 'yAxis' }),
-                React.createElement(Tooltip, { key: 'tooltip' }),
-                React.createElement(Legend, { key: 'legend' }),
-                React.createElement(Bar, { 
-                  dataKey: 'billable',
-                  fill: '#4CAF50',
-                  name: 'Billable %',
-                  key: 'billable'
-                }),
-                React.createElement(Bar, {
-                  dataKey: 'nonBillable',
-                  fill: '#FF9800',
-                  name: 'Non-Billable %',
-                  key: 'nonBillable'
-                })
-              ])
-            )
-          )
-        ]);
+    // Subscribe to Grist data
+    grist.onRecords(records => {
+      updateStatus('Processing data...');
+      console.log('Received records:', records.length);
+      
+      if (!records || !records.length) {
+        updateStatus('No data available');
+        return;
       }
 
-      ReactDOM.render(
-        React.createElement(UtilizationChart),
-        document.getElementById('root')
-      );
+      updateFilters(records);
+      processData(records);
+      updateStatus('Chart ready');
     });
   </script>
 </body>
