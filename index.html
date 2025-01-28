@@ -2,54 +2,53 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Utilization Chart</title>
+    <title>Grist Test</title>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-    <style>
-        #debug {
-            padding: 10px;
-            margin: 10px;
-            background: #f0f0f0;
-            border: 1px solid #ccc;
-            font-family: monospace;
-            white-space: pre-wrap;
-        }
-    </style>
 </head>
 <body>
-    <div id="debug">Page loaded at: <script>document.write(new Date().toISOString())</script></div>
+    <h1>Grist Connection Test</h1>
+    <div id="status"></div>
 
     <script>
-        function addDebugMessage(msg) {
-            const debug = document.getElementById('debug');
-            debug.innerHTML += '\n' + new Date().toISOString() + ': ' + msg;
+        // Update status function
+        function updateStatus(message) {
+            document.getElementById('status').innerHTML += "<br>" + new Date().toISOString() + ": " + message;
         }
 
-        // Let's verify the Grist API is available
-        if (typeof grist === 'undefined') {
-            addDebugMessage('ERROR: Grist API not found');
+        // Initial status
+        updateStatus("Page loaded");
+
+        // Check if grist is defined
+        if (typeof grist !== 'undefined') {
+            updateStatus("Grist API found");
         } else {
-            addDebugMessage('Grist API found');
-            
-            // Try to initialize Grist
+            updateStatus("ERROR: Grist API not found!");
+        }
+
+        // Try to connect to Grist
+        try {
             grist.ready({
                 requiredAccess: 'read'
             }).then(() => {
-                addDebugMessage('Grist ready success');
+                updateStatus("Grist connection successful");
                 
-                // Subscribe to records
+                // Try to get records
                 grist.onRecords(records => {
-                    addDebugMessage('Received records: ' + records.length);
-                    addDebugMessage('First record: ' + JSON.stringify(records[0]));
+                    updateStatus("Got records: " + records.length);
+                    if (records.length > 0) {
+                        updateStatus("First record: " + JSON.stringify(records[0]));
+                    }
                 });
-                
             }).catch(err => {
-                addDebugMessage('ERROR in grist.ready: ' + err.message);
+                updateStatus("ERROR connecting to Grist: " + err.message);
             });
+        } catch (err) {
+            updateStatus("ERROR initializing Grist: " + err.message);
         }
 
         // Add error handler
         window.onerror = function(msg, url, lineNo, columnNo, error) {
-            addDebugMessage('ERROR: ' + msg);
+            updateStatus("ERROR: " + msg);
             return false;
         };
     </script>
