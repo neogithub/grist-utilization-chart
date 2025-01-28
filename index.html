@@ -1,11 +1,11 @@
 <!DOCTYPE html>
+<html>
 <head>
   <meta charset="utf-8">
   <title>Utilization Chart</title>
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
-  <!-- Previous styles remain exactly the same -->
   <style>
     body {
       margin: 0;
@@ -59,10 +59,20 @@
     .checkbox-wrapper input[type="checkbox"] {
       margin: 0;
     }
+    #debug {
+      padding: 10px;
+      margin: 10px 0;
+      background-color: #f5f5f5;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
   </style>
 </head>
 <body>
   <div id="status">Initializing...</div>
+  <div id="debug"></div>
   <div class="view-controls">
     <button id="barView" class="active">Bar Chart</button>
     <button id="trendView">Trend Analysis</button>
@@ -101,45 +111,60 @@
     let showTarget = true;
     let chart = null;
 
+    function log(message, data) {
+      const debugDiv = document.getElementById('debug');
+      const timestamp = new Date().toISOString();
+      debugDiv.innerHTML = `${timestamp}: ${message}\n${JSON.stringify(data, null, 2)}`;
+      console.log(message, data);
+    }
+
     function updateStatus(message) {
       document.getElementById('status').textContent = message;
     }
 
     function createBarChart(data) {
+      log('Creating bar chart', {
+        dataPoints: data.length,
+        sampleData: data[0],
+        showTarget
+      });
+
       const ctx = document.getElementById('utilizationChart').getContext('2d');
       
       if (chart) {
         chart.destroy();
       }
 
+      // Prepare datasets
       const datasets = [
         {
           label: 'Billable %',
           data: data.map(d => d.billable),
           backgroundColor: '#4CAF50',
+          order: 2
         },
         {
           label: 'Non-Billable %',
           data: data.map(d => d.nonBillable),
           backgroundColor: '#FF9800',
+          order: 2
         }
       ];
 
-      // Add target line if showing targets
+      // Add target line if enabled
       if (showTarget) {
         datasets.push({
-          label: 'Target %',
-          data: data.map(d => d.Target),  // Use capital T for Target
+          label: 'Target',
+          data: data.map(d => d.target),
           type: 'line',
           borderColor: 'red',
           borderWidth: 2,
-          borderDash: [5, 5],
-          fill: false,
           pointRadius: 0,
-          order: 0
+          order: 1
         });
       }
 
+      // Create chart
       chart = new Chart(ctx, {
         type: 'bar',
         data: {
@@ -170,6 +195,7 @@
         chart.destroy();
       }
 
+      // Sort and prepare data
       const sortedRecords = _.sortBy(records, [
         r => r.Year,
         r => r.Quarter.substring(1)
@@ -177,8 +203,8 @@
 
       const labels = sortedRecords.map(r => `${r.Year} ${r.Quarter}`);
       const billableData = sortedRecords.map(r => r.Billable);
-      const targetValue = sortedRecords[0]?.Target;  // Use capital T for Target
 
+      // Prepare datasets
       const datasets = [{
         label: 'Billable %',
         data: billableData,
@@ -188,10 +214,11 @@
         fill: true
       }];
 
-      if (showTarget && targetValue) {
+      // Add target line if enabled
+      if (showTarget && sortedRecords[0]?.Target) {
         datasets.push({
-          label: 'Target %',
-          data: Array(labels.length).fill(targetValue),
+          label: 'Target',
+          data: Array(labels.length).fill(sortedRecords[0].Target),
           borderColor: 'red',
           borderWidth: 2,
           borderDash: [5, 5],
@@ -200,6 +227,7 @@
         });
       }
 
+      // Create chart
       chart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -258,7 +286,7 @@
 
     function processData(records) {
       let filtered = records;
-      
+
       if (currentFilters.year !== 'all') {
         filtered = filtered.filter(r => r.Year === parseInt(currentFilters.year));
       }
@@ -280,7 +308,7 @@
             department: group[0].Department,
             billable: _.meanBy(group, r => r.Billable),
             nonBillable: _.meanBy(group, r => r.Non_Billable),
-            Target: group[0].Target  // Use capital T for Target
+            target: parseFloat(group[0].Target) || null
           })
         );
         createBarChart(processed);
@@ -319,11 +347,18 @@
       processData(currentRecords);
     });
 
+    // Subscribe to Grist data
     grist.onRecords(records => {
       if (!records || !records.length) {
         updateStatus('No data available');
         return;
       }
+
+      log('Received records', {
+        count: records.length,
+        sampleRecord: records[0],
+        fields: Object.keys(records[0])
+      });
 
       currentRecords = records;
       updateFilters(records);
