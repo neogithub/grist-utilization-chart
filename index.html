@@ -59,10 +59,20 @@
     .checkbox-wrapper input[type="checkbox"] {
       margin: 0;
     }
+    #debug {
+      padding: 10px;
+      margin: 10px 0;
+      background-color: #f5f5f5;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
   </style>
 </head>
 <body>
   <div id="status">Initializing...</div>
+  <div id="debug"></div>
   <div class="view-controls">
     <button id="barView" class="active">Bar Chart</button>
     <button id="trendView">Trend Analysis</button>
@@ -101,11 +111,25 @@
     let showTarget = true;
     let chart = null;
 
+    function log(message, data) {
+      const debugDiv = document.getElementById('debug');
+      const timestamp = new Date().toISOString();
+      const debugMessage = `${timestamp}: ${message}\n${JSON.stringify(data, null, 2)}`;
+      debugDiv.innerHTML = debugMessage;
+      console.log(message, data);
+    }
+
     function updateStatus(message) {
       document.getElementById('status').textContent = message;
     }
 
     function createBarChart(data) {
+      log('Creating bar chart', {
+        dataPoints: data.length,
+        sampleData: data[0],
+        showTarget
+      });
+
       const ctx = document.getElementById('utilizationChart').getContext('2d');
       
       if (chart) {
@@ -125,15 +149,16 @@
         }
       ];
 
+      // Add target dataset if enabled
       if (showTarget) {
         datasets.push({
-          label: 'Target',
+          label: 'Target %',
           data: data.map(d => d.target),
           type: 'line',
-          borderColor: 'red',
+          borderColor: 'rgba(255, 0, 0, 0.8)',
           borderWidth: 2,
-          pointRadius: 0,
           fill: false,
+          pointRadius: 0,
           order: 0
         });
       }
@@ -147,6 +172,10 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          interaction: {
+            intersect: false,
+            mode: 'index'
+          },
           scales: {
             y: {
               beginAtZero: true,
@@ -162,6 +191,12 @@
     }
 
     function createTrendChart(records) {
+      log('Creating trend chart', {
+        records: records.length,
+        sampleRecord: records[0],
+        showTarget
+      });
+
       const ctx = document.getElementById('utilizationChart').getContext('2d');
       
       if (chart) {
@@ -175,9 +210,10 @@
 
       const labels = sortedRecords.map(r => `${r.Year} ${r.Quarter}`);
       const billableData = sortedRecords.map(r => r.Billable);
-      
+      const target = sortedRecords[0]?.Target;
+
       const datasets = [{
-        label: 'Billable % Trend',
+        label: 'Billable %',
         data: billableData,
         borderColor: '#4CAF50',
         backgroundColor: 'rgba(76, 175, 80, 0.1)',
@@ -185,11 +221,12 @@
         fill: true
       }];
 
-      if (showTarget && sortedRecords[0]?.Target) {
+      // Add target line if enabled and target exists
+      if (showTarget && target) {
         datasets.push({
           label: 'Target %',
-          data: Array(labels.length).fill(sortedRecords[0].Target),
-          borderColor: 'red',
+          data: Array(labels.length).fill(target),
+          borderColor: 'rgba(255, 0, 0, 0.8)',
           borderWidth: 2,
           borderDash: [5, 5],
           fill: false,
@@ -206,6 +243,10 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          interaction: {
+            intersect: false,
+            mode: 'index'
+          },
           scales: {
             y: {
               beginAtZero: true,
@@ -260,6 +301,12 @@
     }
 
     function processData(records) {
+      log('Processing data', {
+        currentView,
+        filters: currentFilters,
+        recordCount: records.length
+      });
+
       let filtered = records;
       
       if (currentFilters.year !== 'all') {
@@ -330,6 +377,11 @@
         updateStatus('No data available');
         return;
       }
+
+      log('Received records', {
+        count: records.length,
+        sampleRecord: records[0]
+      });
 
       currentRecords = records;
       updateFilters(records);
