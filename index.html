@@ -18,37 +18,46 @@
         // Initial status
         updateStatus("Page loaded");
 
-        // Check if grist is defined
-        if (typeof grist !== 'undefined') {
-            updateStatus("Grist API found");
-        } else {
-            updateStatus("ERROR: Grist API not found!");
-        }
-
-        // Try to connect to Grist
-        try {
-            grist.ready({
-                requiredAccess: 'read'
-            }).then(() => {
-                updateStatus("Grist connection successful");
+        // Async function to handle Grist initialization
+        async function initGrist() {
+            try {
+                updateStatus("Attempting to initialize Grist...");
                 
-                // Try to get records
-                grist.onRecords(records => {
-                    updateStatus("Got records: " + records.length);
-                    if (records.length > 0) {
-                        updateStatus("First record: " + JSON.stringify(records[0]));
+                // Wait for Grist API to be ready
+                await grist.ready();
+                updateStatus("Grist initialized successfully");
+
+                // Set up the record subscription
+                grist.onRecords(function(records) {
+                    updateStatus("Received records from Grist: " + records.length);
+                    if (records && records.length > 0) {
+                        updateStatus("Sample record: " + JSON.stringify(records[0]));
                     }
                 });
-            }).catch(err => {
-                updateStatus("ERROR connecting to Grist: " + err.message);
+
+                // Test table access
+                const tableId = await grist.selectedTable.getTableId();
+                updateStatus("Connected to table: " + tableId);
+
+            } catch (error) {
+                updateStatus("ERROR: " + error.message);
+                console.error(error);
+            }
+        }
+
+        // Check if grist is defined
+        if (typeof grist === 'undefined') {
+            updateStatus("ERROR: Grist API not found!");
+        } else {
+            updateStatus("Grist API found, initializing...");
+            initGrist().catch(err => {
+                updateStatus("ERROR in initialization: " + err.message);
             });
-        } catch (err) {
-            updateStatus("ERROR initializing Grist: " + err.message);
         }
 
         // Add error handler
         window.onerror = function(msg, url, lineNo, columnNo, error) {
-            updateStatus("ERROR: " + msg);
+            updateStatus("GLOBAL ERROR: " + msg);
             return false;
         };
     </script>
