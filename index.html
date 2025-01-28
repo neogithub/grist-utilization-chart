@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.1/Recharts.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <style>
+    select {
+      margin: 5px;
+      padding: 5px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+    .filters {
+      margin-bottom: 20px;
+    }
+    #chart {
+      height: 400px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const {
+      BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+    } = Recharts;
+
+    function UtilizationChart() {
+      const [data, setData] = React.useState([]);
+      const [filters, setFilters] = React.useState({
+        year: 'all',
+        quarter: 'all',
+        department: 'all'
+      });
+      const [options, setOptions] = React.useState({
+        years: [],
+        quarters: [],
+        departments: []
+      });
+
+      React.useEffect(() => {
+        // Subscribe to Grist data
+        grist.ready({
+          requiredAccess: 'read',
+          columns: ['Year', 'Quarter', 'Name', 'Department', 'Billable', 'Non-Billable']
+        });
+
+        grist.onRecords(records => {
+          // Process initial data and set up filter options
+          const years = [...new Set(records.map(r => r.Year))];
+          const quarters = [...new Set(records.map(r => r.Quarter))];
+          const departments = [...new Set(records.map(r => r.Department))];
+          
+          setOptions({
+            years,
+            quarters,
+            departments
+          });
+
+          // Process and set the data
+          processData(records);
+        });
+      }, []);
+
+      const processData = (records) => {
+        let filtered = records;
+        
+        // Apply filters
+        if (filters.year !== 'all') {
+          filtered = filtered.filter(r => r.Year === parseInt(filters.year));
+        }
+        if (filters.quarter !== 'all') {
+          filtered = filtered.filter(r => r.Quarter === filters.quarter);
+        }
+        if (filters.department !== 'all') {
+          filtered = filtered.filter(r => r.Department === filters.department);
+        }
+
+        // Calculate averages by person
+        const processed = _.map(
+          _.groupBy(filtered, 'Name'),
+          (group, name) => ({
+            name,
+            department: group[0].Department,
+            billable: _.meanBy(group, 'Billable'),
+            nonBillable: _.meanBy(group, 'Non-Billable')
+          })
+        );
+
+        setData(processed);
+      };
+
+      const handleFilterChange = (filterType, value) => {
+        const newFilters = { ...filters, [filterType]: value };
+        setFilters(newFilters);
+        grist.onRecords(records => processData(records));
+      };
+
+      return React.createElement('div', null, [
+        React.createElement('div', { className: 'filters', key: 'filters' }, [
+          React.createElement('select', {
+            key: 'year',
+            value: filters.year,
+            onChange: (e) => handleFilterChange('year', e.target.value)
+          }, [
+            React.createElement('option', { value: 'all' }, 'All Years'),
+            ...options.years.map(year => 
+              React.createElement('option', { value: year, key: year }, year)
+            )
+          ]),
+          React.createElement('select', {
+            key: 'quarter',
+            value: filters.quarter,
+            onChange: (e) => handleFilterChange('quarter', e.target.value)
+          }, [
+            React.createElement('option', { value: 'all' }, 'All Quarters'),
+            ...options.quarters.map(quarter => 
+              React.createElement('option', { value: quarter, key: quarter }, quarter)
+            )
+          ]),
+          React.createElement('select', {
+            key: 'department',
+            value: filters.department,
+            onChange: (e) => handleFilterChange('department', e.target.value)
+          }, [
+            React.createElement('option', { value: 'all' }, 'All Departments'),
+            ...options.departments.map(dept => 
+              React.createElement('option', { value: dept, key: dept }, dept)
+            )
+          ])
+        ]),
+        React.createElement(ResponsiveContainer, { width: '100%', height: 400, key: 'chart' },
+          React.createElement(BarChart, { data: data }, [
+            React.createElement(CartesianGrid, { strokeDasharray: '3 3', key: 'grid' }),
+            React.createElement(XAxis, { dataKey: 'name', key: 'xAxis' }),
+            React.createElement(YAxis, { key: 'yAxis' }),
+            React.createElement(Tooltip, { key: 'tooltip' }),
+            React.createElement(Legend, { key: 'legend' }),
+            React.createElement(Bar, { 
+              dataKey: 'billable',
+              fill: '#4CAF50',
+              name: 'Billable %',
+              key: 'billable'
+            }),
+            React.createElement(Bar, {
+              dataKey: 'nonBillable',
+              fill: '#FF9800',
+              name: 'Non-Billable %',
+              key: 'nonBillable'
+            })
+          ])
+        )
+      ]);
+    }
+
+    ReactDOM.render(
+      React.createElement(UtilizationChart),
+      document.getElementById('root')
+    );
+  </script>
+</body>
+</html>
