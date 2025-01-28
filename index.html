@@ -110,7 +110,6 @@
     let currentView = 'bar';
     let showTarget = true;
     let chart = null;
-    const defaultTarget = 80;
 
     function log(message, data) {
       const debugDiv = document.getElementById('debug');
@@ -146,16 +145,21 @@
       ];
 
       if (showTarget) {
-        datasets.push({
-          label: 'Target',
-          data: data.map(() => defaultTarget),
-          type: 'line',
-          borderColor: 'red',
-          borderWidth: 2,
-          borderDash: [5, 5],
-          fill: false,
-          pointRadius: 0,
-          order: 1
+        data.forEach((personData, index) => {
+          if (personData.target) {
+            datasets.push({
+              label: `${personData.name.trim()} Target`,
+              data: Array(data.length).fill(null).map((_, i) => i === index ? personData.target : null),
+              type: 'line',
+              borderColor: 'red',
+              borderWidth: 2,
+              borderDash: [5, 5],
+              fill: false,
+              pointRadius: 4,
+              pointStyle: 'circle',
+              order: 1
+            });
+          }
         });
       }
 
@@ -187,6 +191,11 @@
                   return `${label}: ${value}%`;
                 }
               }
+            },
+            legend: {
+              labels: {
+                filter: item => !item.text.includes('Target') || item.text === 'Target'
+              }
             }
           }
         }
@@ -200,39 +209,46 @@
         chart.destroy();
       }
 
-      const sortedRecords = _.sortBy(records, [
-        r => r.Year,
-        r => r.Quarter.substring(1)
-      ]);
+      const groupedByName = _.groupBy(records, 'Name');
+      const allPeriods = [...new Set(records.map(r => `${r.Year} ${r.Quarter}`))].sort();
+      const datasets = [];
 
-      const labels = sortedRecords.map(r => `${r.Year} ${r.Quarter}`);
-      const billableData = sortedRecords.map(r => r.Billable);
+      Object.entries(groupedByName).forEach(([name, personRecords]) => {
+        const sortedRecords = _.sortBy(personRecords, [
+          r => r.Year,
+          r => r.Quarter.substring(1)
+        ]);
 
-      const datasets = [{
-        label: 'Billable %',
-        data: billableData,
-        borderColor: '#4CAF50',
-        backgroundColor: 'rgba(76, 175, 80, 0.1)',
-        tension: 0.1,
-        fill: true
-      }];
-
-      if (showTarget) {
         datasets.push({
-          label: 'Target',
-          data: Array(labels.length).fill(defaultTarget),
-          borderColor: 'red',
-          borderWidth: 2,
-          borderDash: [5, 5],
-          fill: false,
-          pointRadius: 0
+          label: name.trim(),
+          data: allPeriods.map(period => {
+            const record = sortedRecords.find(r => `${r.Year} ${r.Quarter}` === period);
+            return record ? record.Billable : null;
+          }),
+          borderColor: '#4CAF50',
+          backgroundColor: 'rgba(76, 175, 80, 0.1)',
+          tension: 0.1,
+          fill: false
         });
-      }
+
+        if (showTarget && sortedRecords[0]?.Target) {
+          datasets.push({
+            label: `${name.trim()} Target`,
+            data: Array(allPeriods.length).fill(sortedRecords[0].Target),
+            borderColor: 'red',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            fill: false,
+            pointRadius: 0,
+            hidden: false
+          });
+        }
+      });
 
       chart = new Chart(ctx, {
         type: 'line',
         data: {
-          labels: labels,
+          labels: allPeriods,
           datasets: datasets
         },
         options: {
@@ -262,6 +278,11 @@
                   const value = context.parsed.y?.toFixed(1) || 0;
                   return `${label}: ${value}%`;
                 }
+              }
+            },
+            legend: {
+              labels: {
+                filter: item => !item.text.includes('Target') || item.text === 'Target'
               }
             }
           }
@@ -319,7 +340,8 @@
             name,
             department: group[0].Department,
             billable: _.meanBy(group, r => r.Billable),
-            nonBillable: _.meanBy(group, r => r.Non_Billable)
+            nonBillable: _.meanBy(group, r => r.Non_Billable),
+            target: group[0].Target
           })
         );
         createBarChart(processed);
