@@ -123,9 +123,10 @@
     }
 
     function createBarChart(data) {
-      log('Creating bar chart', {
-        dataPoints: data.length,
-        sampleData: data[0],
+      log('Creating bar chart with data', {
+        recordCount: data.length,
+        sampleRecord: data[0],
+        availableFields: data[0] ? Object.keys(data[0]) : [],
         showTarget
       });
 
@@ -135,7 +136,6 @@
         chart.destroy();
       }
 
-      // Prepare datasets
       const datasets = [
         {
           label: 'Billable %',
@@ -151,25 +151,20 @@
         }
       ];
 
-      // Add target line if enabled
       if (showTarget) {
-        const targetData = data.map(d => d.target);
-        if (targetData.some(t => t !== null)) {
-          datasets.push({
-            label: 'Target',
-            data: targetData,
-            type: 'line',
-            borderColor: 'red',
-            borderWidth: 2,
-            borderDash: [5, 5],
-            fill: false,
-            pointRadius: 0,
-            order: 1
-          });
-        }
+        datasets.push({
+          label: 'Target',
+          data: data.map(d => d.target),
+          type: 'line',
+          borderColor: 'red',
+          borderWidth: 2,
+          borderDash: [5, 5],
+          fill: false,
+          pointRadius: 0,
+          order: 1
+        });
       }
 
-      // Create chart
       chart = new Chart(ctx, {
         type: 'bar',
         data: {
@@ -205,6 +200,13 @@
     }
 
     function createTrendChart(records) {
+      log('Creating trend chart with records', {
+        recordCount: records.length,
+        sampleRecord: records[0],
+        availableFields: records[0] ? Object.keys(records[0]) : [],
+        showTarget
+      });
+
       const ctx = document.getElementById('utilizationChart').getContext('2d');
       
       if (chart) {
@@ -218,7 +220,6 @@
 
       const labels = sortedRecords.map(r => `${r.Year} ${r.Quarter}`);
       const billableData = sortedRecords.map(r => r.Billable);
-      const target = parseFloat(sortedRecords[0]?.['$Target']) || null;
 
       const datasets = [{
         label: 'Billable %',
@@ -229,10 +230,10 @@
         fill: true
       }];
 
-      if (showTarget && target !== null) {
+      if (showTarget && sortedRecords[0]?.$Target) {
         datasets.push({
           label: 'Target',
-          data: Array(labels.length).fill(target),
+          data: Array(labels.length).fill(sortedRecords[0].$Target),
           borderColor: 'red',
           borderWidth: 2,
           borderDash: [5, 5],
@@ -309,6 +310,13 @@
     }
 
     function processData(records) {
+      log('Processing records', {
+        recordCount: records.length,
+        sampleRecord: records[0],
+        availableFields: records[0] ? Object.keys(records[0]) : [],
+        filters: currentFilters
+      });
+
       let filtered = records;
 
       if (currentFilters.year !== 'all') {
@@ -332,7 +340,7 @@
             department: group[0].Department,
             billable: _.meanBy(group, r => r.Billable),
             nonBillable: _.meanBy(group, r => r.Non_Billable),
-            target: parseFloat(group[0]['$Target']) || null
+            target: group[0].$Target
           })
         );
         createBarChart(processed);
@@ -377,10 +385,10 @@
         return;
       }
 
-      log('Received records', {
+      log('Received records from Grist', {
         count: records.length,
         sampleRecord: records[0],
-        fields: Object.keys(records[0])
+        availableFields: Object.keys(records[0])
       });
 
       currentRecords = records;
