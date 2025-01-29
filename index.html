@@ -39,12 +39,12 @@
       height: 400px;
       width: 100%;
     }
-    #status {
+    /* #status {
       padding: 10px;
       margin-bottom: 10px;
       background-color: #f8f9fa;
       border-radius: 4px;
-    }
+    } */
     .view-controls {
       display: flex;
       gap: 10px;
@@ -71,7 +71,7 @@
   </style>
 </head>
 <body>
-  <div id="status">Initializing...</div>
+  <!-- <div id="status">Initializing...</div> -->
   <div id="debug"></div>
   <div class="view-controls">
     <button id="barView" class="active">Bar Chart</button>
@@ -118,9 +118,9 @@
       console.log(message, data);
     }
 
-    function updateStatus(message) {
-      document.getElementById('status').textContent = message;
-    }
+    // function updateStatus(message) {
+    //   document.getElementById('status').textContent = message;
+    // }
 
     function createBarChart(data) {
       const ctx = document.getElementById('utilizationChart').getContext('2d');
@@ -377,21 +377,21 @@
     });
 
     grist.onRecords(records => {
-      if (!records || !records.length) {
-        updateStatus('No data available');
-        return;
-      }
+      // if (!records || !records.length) {
+      //   updateStatus('No data available');
+      //   return;
+      // }
 
-      log('Received records', {
-        count: records.length,
-        sampleRecord: records[0],
-        fields: Object.keys(records[0])
-      });
+      // log('Received records', {
+      //   count: records.length,
+      //   sampleRecord: records[0],
+      //   fields: Object.keys(records[0])
+      // });
 
       currentRecords = records;
       updateFilters(records);
       processData(records);
-      updateStatus('Chart ready');
+      // updateStatus('Chart ready');
     });
   </script>
 </body>
