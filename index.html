@@ -121,7 +121,7 @@
     function updateStatus(message) {
       document.getElementById('status').textContent = message;
     }
-    
+
     function createBarChart(data) {
       const ctx = document.getElementById('utilizationChart').getContext('2d');
       
@@ -331,7 +331,7 @@
 
       if (currentView === 'bar') {
         const processed = _.map(
-          _.groupBy(filtered, r => r.Name),
+          _.groupBy(filtered, r => r.Name.trim()),  // Note the .trim() here
           (group, name) => ({
             name,
             department: group[0].Department,
