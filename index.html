@@ -9,13 +9,17 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
 </head>
 <body>
-  <div id="debug"></div>
+  <div id="debug" style="display: none;"></div>
   <div class="view-controls">
     <button id="barView" class="active">Bar Chart</button>
     <button id="trendView">Trend Analysis</button>
     <div class="checkbox-wrapper">
       <input type="checkbox" id="showTarget" checked>
       <label for="showTarget">Show Target</label>
+    </div>
+    <div class="checkbox-wrapper">
+      <input type="checkbox" id="toggleDebug">
+      <label for="toggleDebug">Show Debug</label>
     </div>
   </div>
   <div class="filters">
@@ -357,6 +361,11 @@
     document.getElementById('showTarget').addEventListener('change', (e) => {
       showTarget = e.target.checked;
       processData(currentRecords);
+    });
+
+    document.getElementById('toggleDebug').addEventListener('change', (e) => {
+      const debugDiv = document.getElementById('debug');
+      debugDiv.style.display = e.target.checked ? 'block' : 'none';
     });
 
     grist.onRecords(records => {
