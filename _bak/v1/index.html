@@ -3,12 +3,75 @@
 <head>
   <meta charset="utf-8">
   <title>Utilization Chart</title>
-  <link rel="stylesheet" href="utilization-styles.css">
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segue UI', Roboto, sans-serif;
+    }
+    select, button {
+      margin: 5px;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      min-width: 120px;
+    }
+    button {
+      background: #f0f0f0;
+      cursor: pointer;
+    }
+    button.active {
+      background: #4CAF50;
+      color: white;
+    }
+    .filters {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .chart-container {
+      position: relative;
+      height: 400px;
+      width: 100%;
+    }
+    /* #status {
+      padding: 10px;
+      margin-bottom: 10px;
+      background-color: #f8f9fa;
+      border-radius: 4px;
+    } */
+    .view-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+      align-items: center;
+    }
+    .checkbox-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .checkbox-wrapper input[type="checkbox"] {
+      margin: 0;
+    }
+    #debug {
+      padding: 10px;
+      margin: 10px 0;
+      background-color: #f5f5f5;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+  </style>
 </head>
 <body>
+  <!-- <div id="status">Initializing...</div> -->
   <div id="debug"></div>
   <div class="view-controls">
     <button id="barView" class="active">Bar Chart</button>
@@ -19,12 +82,6 @@
     </div>
   </div>
   <div class="filters">
-    <div class="department-radio-buttons">
-      <label><input type="radio" name="departmentType" value="all" checked> All Departments</label>
-      <label><input type="radio" name="departmentType" value="3d"> 3D</label>
-      <label><input type="radio" name="departmentType" value="design"> Design</label>
-      <label><input type="radio" name="departmentType" value="custom"> Custom:</label>
-    </div>
     <select id="yearFilter">
       <option value="all">All Years</option>
     </select>
@@ -48,7 +105,6 @@
       year: 'all',
       quarter: 'all',
       department: 'all',
-      departmentType: 'all',
       name: 'all'
     };
     let currentView = 'bar';
@@ -62,22 +118,9 @@
       console.log(message, data);
     }
 
-    function matchesDepartmentType(department, departmentType) {
-      if (!department) return false;
-      
-      switch (departmentType) {
-        case 'all':
-          return true;
-        case '3d':
-          return department.toLowerCase().includes('3d');
-        case 'design':
-          return department.toLowerCase().includes('design');
-        case 'custom':
-          return currentFilters.department === 'all' || department === currentFilters.department;
-        default:
-          return true;
-      }
-    }
+    // function updateStatus(message) {
+    //   document.getElementById('status').textContent = message;
+    // }
 
     function createBarChart(data) {
       const ctx = document.getElementById('utilizationChart').getContext('2d');
@@ -102,6 +145,7 @@
       ];
 
       if (showTarget) {
+        // Add a single target line dataset that spans all bars
         datasets.push({
           label: 'Target',
           data: data.map(d => d.target),
@@ -154,7 +198,6 @@
         }
       });
     }
-
     function createTrendChart(records) {
       const ctx = document.getElementById('utilizationChart').getContext('2d');
       
@@ -279,17 +322,16 @@
       if (currentFilters.quarter !== 'all') {
         filtered = filtered.filter(r => r.Quarter === currentFilters.quarter);
       }
-      
-      // Apply department type filter
-      filtered = filtered.filter(r => matchesDepartmentType(r.Department, currentFilters.departmentType));
-      
+      if (currentFilters.department !== 'all') {
+        filtered = filtered.filter(r => r.Department === currentFilters.department);
+      }
       if (currentFilters.name !== 'all') {
         filtered = filtered.filter(r => r.Name.trim() === currentFilters.name);
       }
 
       if (currentView === 'bar') {
         const processed = _.map(
-          _.groupBy(filtered, r => r.Name.trim()),
+          _.groupBy(filtered, r => r.Name.trim()),  // Note the .trim() here
           (group, name) => ({
             name,
             department: group[0].Department,
@@ -302,37 +344,12 @@
       } else {
         createTrendChart(filtered);
       }
-
-      log('Processed data', {
-        originalRecords: records.length,
-        filteredRecords: filtered.length,
-        filters: currentFilters
-      });
     }
 
     // Initialize Grist
     grist.ready();
     
-    // Set up event listeners for radio buttons
-    document.querySelectorAll('input[name="departmentType"]').forEach(radio => {
-      radio.addEventListener('change', (e) => {
-        currentFilters.departmentType = e.target.value;
-        
-        // Enable/disable the department dropdown based on selection
-        const departmentFilter = document.getElementById('departmentFilter');
-        if (currentFilters.departmentType === 'custom') {
-          departmentFilter.disabled = false;
-        } else {
-          departmentFilter.disabled = true;
-          currentFilters.department = 'all';
-          departmentFilter.value = 'all';
-        }
-        
-        processData(currentRecords);
-      });
-    });
-
-    // Set up event listeners for other filters
+    // Set up event listeners
     ['year', 'quarter', 'department', 'name'].forEach(filterId => {
       document.getElementById(filterId + 'Filter').addEventListener('change', (e) => {
         currentFilters[filterId] = e.target.value;
@@ -360,14 +377,21 @@
     });
 
     grist.onRecords(records => {
+      // if (!records || !records.length) {
+      //   updateStatus('No data available');
+      //   return;
+      // }
+
+      // log('Received records', {
+      //   count: records.length,
+      //   sampleRecord: records[0],
+      //   fields: Object.keys(records[0])
+      // });
+
       currentRecords = records;
       updateFilters(records);
-      
-      // Initialize department dropdown state based on default radio selection
-      const departmentFilter = document.getElementById('departmentFilter');
-      departmentFilter.disabled = true; // Start disabled since 'all' is default
-      
       processData(records);
+      // updateStatus('Chart ready');
     });
   </script>
 </body>
