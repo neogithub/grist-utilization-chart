@@ -70,4 +70,32 @@
 
   <script src="scripts.js"></script>
 </body>
+
+<div class="controls">
+  <label for="departmentFilter">Department:</label>
+  <select id="departmentFilter"></select>
+
+  <label for="yearFilter">Year:</label>
+  <select id="yearFilter"></select>
+
+  <label for="viewToggle">View:</label>
+  <select id="viewToggle">
+    <option value="bar">Bar</option>
+    <option value="trend">Trend</option>
+  </select>
+
+  <label>
+    <input type="checkbox" id="showTarget" checked /> Show Target
+  </label>
+
+  <button id="debugBtn">Debug</button>
+</div>
+
+<div class="chart-container">
+  <canvas id="chart"></canvas>
+</div>
+
+<!-- Debug output -->
+<textarea id="debugOutput" style="width:100%;height:150px;margin-top:10px;font-family:monospace;"></textarea>
+
 </html>

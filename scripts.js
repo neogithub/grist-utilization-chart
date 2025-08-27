@@ -157,6 +157,26 @@ function createBarChart(data) {
   });
 }
 
+// Debug logger
+function logDebug(msg, data) {
+  const out = document.getElementById('debugOutput');
+  let str = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  if (data !== undefined) {
+    str += " " + JSON.stringify(data, null, 2);
+  }
+  out.value = str + "\n" + out.value; // prepend new logs
+}
+
+// Wire Debug button
+document.getElementById('debugBtn').addEventListener('click', () => {
+  logDebug("Current state", {
+    filters: currentFilters,
+    view: currentView,
+    showTarget,
+    targetsByPersonYear
+  });
+});
+
 // Trend Chart
 function createTrendChart(records) {
   if (chart) chart.destroy();
