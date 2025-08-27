@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Utilization Chart</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+</head>
+<body>
+  <div id="debug" style="display: none;"></div>
+  <div class="view-controls">
+    <button id="barView" class="active">Bar Chart</button>
+    <button id="trendView">Trend Analysis</button>
+    <div class="checkbox-wrapper">
+      <input type="checkbox" id="showTarget" checked>
+      <label for="showTarget">Show Target</label>
+    </div>
+    <div class="checkbox-wrapper">
+      <input type="checkbox" id="toggleDebug">
+      <label for="toggleDebug">Show Debug</label>
+    </div>
+  </div>
+  <div class="filters">
+    <div class="department-radio-buttons">
+      <label><input type="radio" name="departmentType" value="all" checked> All Departments</label>
+      <label><input type="radio" name="departmentType" value="3d"> 3D</label>
+      <label><input type="radio" name="departmentType" value="design"> Design</label>
+      <label><input type="radio" name="departmentType" value="custom"> Custom:</label>
+    </div>
+    <select id="yearFilter">
+      <option value="all">All Years</option>
+    </select>
+    <select id="quarterFilter">
+      <option value="all">All Quarters</option>
+    </select>
+    <select id="departmentFilter">
+      <option value="all">All Departments</option>
+    </select>
+    <select id="nameFilter">
+      <option value="all">All Names</option>
+    </select>
+  </div>
+  <div class="chart-container">
+    <canvas id="utilizationChart"></canvas>
+  </div>
+
+  <script>
+    let currentRecords = [];
+    let currentFilters = {
+      year: 'all',
+      quarter: 'all',
+      department: 'all',
+      departmentType: 'all',
+      name: 'all'
+    };
+    let currentView = 'bar';
+    let showTarget = true;
+    let chart = null;
+
+    function log(message, data) {
+      const debugDiv = document.getElementById('debug');
+      const timestamp = new Date().toISOString();
+      debugDiv.innerHTML = `${timestamp}: ${message}\n${JSON.stringify(data, null, 2)}`;
+      console.log(message, data);
+    }
+
+    function matchesDepartmentType(department, departmentType) {
+      if (!department) return false;
+      
+      switch (departmentType) {
+        case 'all':
+          return true;
+        case '3d':
+          return department.toLowerCase().includes('3d');
+        case 'design':
+          return department.toLowerCase().includes('design');
+        case 'custom':
+          return currentFilters.department === 'all' || department === currentFilters.department;
+        default:
+          return true;
+      }
+    }
+
+    function createBarChart(data) {
+      const ctx = document.getElementById('utilizationChart').getContext('2d');
+      
+      if (chart) {
+        chart.destroy();
+      }
+
+      const datasets = [
+        {
+          label: 'Billable %',
+          data: data.map(d => d.billable),
+          backgroundColor: '#4CAF50',
+          order: 2
+        },
+        {
+          label: 'Non-Billable %',
+          data: data.map(d => d.nonBillable),
+          backgroundColor: '#FF9800',
+          order: 2
+        }
+      ];
+
+      if (showTarget) {
+        datasets.push({
+          label: 'Target',
+          data: data.map(d => d.target),
+          type: 'line',
+          borderColor: 'red',
+          borderWidth: 2,
+          borderDash: [5, 5],
+          fill: false,
+          pointRadius: 4,
+          pointStyle: 'circle',
+          order: 1
+        });
+      }
+
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: data.map(d => d.name.trim()),
+          datasets: datasets
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              stacked: false,
+              max: 100
+            },
+            x: {
+              stacked: false
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const label = context.dataset.label || '';
+                  const value = context.parsed.y?.toFixed(1) || 0;
+                  return `${label}: ${value}%`;
+                }
+              }
+            },
+            legend: {
+              labels: {
+                filter: item => !item.text.includes('Target') || item.text === 'Target'
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function createTrendChart(records) {
+      const ctx = document.getElementById('utilizationChart').getContext('2d');
+      
+      if (chart) {
+        chart.destroy();
+      }
+
+      const groupedByName = _.groupBy(records, 'Name');
+      const allPeriods = [...new Set(records.map(r => `${r.Year} ${r.Quarter}`))].sort();
+      const datasets = [];
+
+      Object.entries(groupedByName).forEach(([name, personRecords]) => {
+        const sortedRecords = _.sortBy(personRecords, [
+          r => r.Year,
+          r => r.Quarter.substring(1)
+        ]);
+
+        datasets.push({
+          label: name.trim(),
+          data: allPeriods.map(period => {
+            const record = sortedRecords.find(r => `${r.Year} ${r.Quarter}` === period);
+            return record ? record.Billable : null;
+          }),
+          borderColor: '#4CAF50',
+          backgroundColor: 'rgba(76, 175, 80, 0.1)',
+          tension: 0.1,
+          fill: false
+        });
+
+        if (showTarget && sortedRecords[0]?.Target) {
+          datasets.push({
+            label: `${name.trim()} Target`,
+            data: Array(allPeriods.length).fill(sortedRecords[0].Target),
+            borderColor: 'red',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            fill: false,
+            pointRadius: 0,
+            hidden: false
+          });
+        }
+      });
+
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: allPeriods,
+          datasets: datasets
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 100,
+              title: {
+                display: true,
+                text: 'Billable %'
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Time Period'
+              }
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const label = context.dataset.label || '';
+                  const value = context.parsed.y?.toFixed(1) || 0;
+                  return `${label}: ${value}%`;
+                }
+              }
+            },
+            legend: {
+              labels: {
+                filter: item => !item.text.includes('Target') || item.text === 'Target'
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function updateFilters(records) {
+      const years = [...new Set(records.map(r => r.Year))].sort();
+      const quarters = [...new Set(records.map(r => r.Quarter))].sort();
+      const departments = [...new Set(records.map(r => r.Department))].sort();
+      const names = [...new Set(records.map(r => r.Name.trim()))].sort();
+
+      const yearFilter = document.getElementById('yearFilter');
+      const quarterFilter = document.getElementById('quarterFilter');
+      const departmentFilter = document.getElementById('departmentFilter');
+      const nameFilter = document.getElementById('nameFilter');
+
+      yearFilter.innerHTML = '<option value="all">All Years</option>';
+      quarterFilter.innerHTML = '<option value="all">All Quarters</option>';
+      departmentFilter.innerHTML = '<option value="all">All Departments</option>';
+      nameFilter.innerHTML = '<option value="all">All Names</option>';
+
+      years.forEach(year => yearFilter.add(new Option(year, year)));
+      quarters.forEach(quarter => quarterFilter.add(new Option(quarter, quarter)));
+      departments.forEach(dept => departmentFilter.add(new Option(dept, dept)));
+      names.forEach(name => nameFilter.add(new Option(name, name)));
+
+      yearFilter.value = currentFilters.year;
+      quarterFilter.value = currentFilters.quarter;
+      departmentFilter.value = currentFilters.department;
+      nameFilter.value = currentFilters.name;
+    }
+
+    function processData(records) {
+      let filtered = records;
+
+      if (currentFilters.year !== 'all') {
+        filtered = filtered.filter(r => r.Year === parseInt(currentFilters.year));
+      }
+      if (currentFilters.quarter !== 'all') {
+        filtered = filtered.filter(r => r.Quarter === currentFilters.quarter);
+      }
+      
+      // Apply department type filter
+      filtered = filtered.filter(r => matchesDepartmentType(r.Department, currentFilters.departmentType));
+      
+      if (currentFilters.name !== 'all') {
+        filtered = filtered.filter(r => r.Name.trim() === currentFilters.name);
+      }
+
+      if (currentView === 'bar') {
+        const processed = _.map(
+          _.groupBy(filtered, r => r.Name.trim()),
+          (group, name) => ({
+            name,
+            department: group[0].Department,
+            billable: _.meanBy(group, r => r.Billable),
+            nonBillable: _.meanBy(group, r => r.Non_Billable),
+            target: group[0].Target
+          })
+        );
+        createBarChart(processed);
+      } else {
+        createTrendChart(filtered);
+      }
+
+      log('Processed data', {
+        originalRecords: records.length,
+        filteredRecords: filtered.length,
+        filters: currentFilters
+      });
+    }
+
+    // Initialize Grist
+    grist.ready();
+    
+    // Set up event listeners for radio buttons
+    document.querySelectorAll('input[name="departmentType"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        currentFilters.departmentType = e.target.value;
+        
+        // Enable/disable the department dropdown based on selection
+        const departmentFilter = document.getElementById('departmentFilter');
+        if (currentFilters.departmentType === 'custom') {
+          departmentFilter.disabled = false;
+        } else {
+          departmentFilter.disabled = true;
+          currentFilters.department = 'all';
+          departmentFilter.value = 'all';
+        }
+        
+        processData(currentRecords);
+      });
+    });
+
+    // Set up event listeners for other filters
+    ['year', 'quarter', 'department', 'name'].forEach(filterId => {
+      document.getElementById(filterId + 'Filter').addEventListener('change', (e) => {
+        currentFilters[filterId] = e.target.value;
+        processData(currentRecords);
+      });
+    });
+
+    document.getElementById('barView').addEventListener('click', (e) => {
+      currentView = 'bar';
+      document.getElementById('barView').classList.add('active');
+      document.getElementById('trendView').classList.remove('active');
+      processData(currentRecords);
+    });
+
+    document.getElementById('trendView').addEventListener('click', (e) => {
+      currentView = 'trend';
+      document.getElementById('trendView').classList.add('active');
+      document.getElementById('barView').classList.remove('active');
+      processData(currentRecords);
+    });
+
+    document.getElementById('showTarget').addEventListener('change', (e) => {
+      showTarget = e.target.checked;
+      processData(currentRecords);
+    });
+
+    document.getElementById('toggleDebug').addEventListener('change', (e) => {
+      const debugDiv = document.getElementById('debug');
+      debugDiv.style.display = e.target.checked ? 'block' : 'none';
+    });
+
+    grist.onRecords(records => {
+      currentRecords = records;
+      updateFilters(records);
+      
+      // Initialize department dropdown state based on default radio selection
+      const departmentFilter = document.getElementById('departmentFilter');
+      departmentFilter.disabled = true; // Start disabled since 'all' is default
+      
+      processData(records);
+    });
+  </script>
+</body>
+</html>
