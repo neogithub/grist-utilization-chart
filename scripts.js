@@ -1,3 +1,7 @@
+// --- Table IDs (must match Grist Table IDs, not display names) ---
+const PEOPLE_TABLE_ID = 'People';               // adjust if your People table ID differs
+const UTIL_TARGETS_TABLE_ID = 'Utilization_Targets'; // <-- this is your working ID
+
 // ===== State =====
 let currentRecords = [];
 let currentFilters = {
@@ -78,14 +82,14 @@ function getTargetFor(name, year) {
 async function loadTargets() {
   try {
     // Fetch People to map rowId -> Name (because Utilization Targets.Person is a Ref)
-    const people = await grist.docApi.fetchTable('People');
+    const people = await grist.docApi.fetchTable(PEOPLE_TABLE_ID);
     const idToName = {};
     (people.id || []).forEach((id, i) => {
       idToName[id] = (people.Name?.[i] || '').trim();
     });
 
     // Fetch Utilization Targets
-    const ut = await grist.docApi.fetchTable('Utilization_Targets');
+    const ut = await grist.docApi.fetchTable(UTIL_TARGETS_TABLE_ID);
     const map = {};
     (ut.id || []).forEach((id, i) => {
       const personId = ut.Person?.[i];
