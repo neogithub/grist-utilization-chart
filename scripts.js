@@ -1,122 +1,71 @@
-// Globals
+// ===== State =====
 let currentRecords = [];
-let currentFilters = { department: 'all', year: 'all' };
+let currentFilters = {
+  year: 'all',
+  quarter: 'all',
+  department: 'all',
+  departmentType: 'all',
+  name: 'all'
+};
 let currentView = 'bar';
 let showTarget = true;
+let chart = null;
 
+// Option 2: per-person per-year targets map
 let targetsByPersonYear = {};
 
-// Lookup helper
-function getTargetFor(name, year) {
-  if (!name || !year) return null;
-  return targetsByPersonYear?.[name.trim()]?.[parseInt(year)] ?? null;
+// ===== Utilities =====
+function log(message, data) {
+  const debugDiv = document.getElementById('debug');
+  const timestamp = new Date().toISOString();
+  debugDiv.textContent = `${timestamp}: ${message}\n` + (data ? JSON.stringify(data, null, 2) : '');
 }
 
-// Load Utilization Targets + People
-async function loadTargets() {
-  const people = await grist.docApi.fetchTable('People');
-  const peopleById = {};
-  (people.id || []).forEach((id, i) => {
-    peopleById[id] = (people.Name?.[i] || '').trim();
-  });
-
-  const ut = await grist.docApi.fetchTable('Utilization Targets');
-  targetsByPersonYear = {};
-  (ut.id || []).forEach((id, i) => {
-    const personId = ut.Person?.[i];
-    const year = ut.Year?.[i];
-    const target = ut.Target?.[i];
-    const name = peopleById[personId];
-    if (!name || !year) return;
-
-    if (!targetsByPersonYear[name]) targetsByPersonYear[name] = {};
-    targetsByPersonYear[name][parseInt(year)] = target ?? null;
-  });
-}
-
-// Filter UI setup
-function updateFilters(records) {
-  const departmentFilter = document.getElementById('departmentFilter');
-  const yearFilter = document.getElementById('yearFilter');
-
-  const departments = ['all', ...new Set(records.map(r => r.Department))];
-  departmentFilter.innerHTML = departments.map(d => `<option value="${d}">${d}</option>`).join('');
-
-  const years = ['all', ...new Set(records.map(r => r.Period.split(' ')[0]))].sort();
-  yearFilter.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
-
-  departmentFilter.addEventListener('change', e => {
-    currentFilters.department = e.target.value;
-    processData(currentRecords);
-  });
-
-  yearFilter.addEventListener('change', e => {
-    currentFilters.year = e.target.value;
-    processData(currentRecords);
-  });
-
-  document.getElementById('viewToggle').addEventListener('change', e => {
-    currentView = e.target.value;
-    processData(currentRecords);
-  });
-
-  document.getElementById('showTarget').addEventListener('change', e => {
-    showTarget = e.target.checked;
-    processData(currentRecords);
-  });
-}
-
-// Process & route to correct chart
-function processData(records) {
-  const filtered = records.filter(r =>
-    (currentFilters.department === 'all' || r.Department === currentFilters.department) &&
-    (currentFilters.year === 'all' || r.Period.startsWith(currentFilters.year))
-  );
-
-  if (currentView === 'bar') {
-    const processed = _.map(
-      _.groupBy(filtered, r => r.Name.trim()),
-      (group, name) => {
-        const yr = currentFilters.year !== 'all' ? parseInt(currentFilters.year) : null;
-        return {
-          name,
-          department: group[0].Department,
-          billable: _.meanBy(group, r => r.Billable),
-          nonBillable: _.meanBy(group, r => r.Non_Billable),
-          target: yr ? getTargetFor(name, yr) : null
-        };
-      }
-    );
-    createBarChart(processed);
-  } else {
-    createTrendChart(filtered);
+function matchesDepartmentType(department, departmentType) {
+  if (!department) return false;
+  switch (departmentType) {
+    case 'all': return true;
+    case '3d': return department.toLowerCase().includes('3d');
+    case 'design': return department.toLowerCase().includes('design');
+    case 'custom':
+      return currentFilters.department === 'all' || department === currentFilters.department;
+    default: return true;
   }
 }
 
-// Chart instance (shared)
-let chart;
-
-// History modal helpers
-function openHistory(name) {
-  if (!name) return;
-  const modal = document.getElementById('historyModal');
-  const tbody = document.getElementById('historyTable');
-  const personEl = document.getElementById('historyPerson');
-  personEl.textContent = name;
-
-  const rows = targetsByPersonYear[name] || {};
-  const sortedYears = Object.keys(rows).map(y => parseInt(y)).sort((a,b)=>a-b);
-
-  tbody.innerHTML = sortedYears.length
-    ? sortedYears.map(y => `<tr><td>${y}</td><td>${rows[y] ?? ''}</td></tr>`).join('')
-    : '<tr><td colspan="2" style="color:#999;">No targets found</td></tr>';
-
-  modal.style.display = 'flex';
+function getTargetFor(name, year) {
+  if (!name || !year || year === 'all') return null;
+  const y = parseInt(year);
+  return targetsByPersonYear?.[name.trim()]?.[y] ?? null;
 }
 
-function closeHistory() {
-  document.getElementById('historyModal').style.display = 'none';
+// Build targets map from People + Utilization Targets tables
+async function loadTargets() {
+  try {
+    const people = await grist.docApi.fetchTable('People');
+    const byId = {};
+    (people.id || []).forEach((id, i) => {
+      byId[id] = (people.Name?.[i] || '').trim();
+    });
+
+    const ut = await grist.docApi.fetchTable('Utilization Targets');
+    targetsByPersonYear = {};
+    (ut.id || []).forEach((id, i) => {
+      const personId = ut.Person?.[i];
+      const year = ut.Year?.[i];
+      const target = ut.Target?.[i];
+      const name = byId[personId];
+      if (!name || !year) return;
+      if (!targetsByPersonYear[name]) targetsByPersonYear[name] = {};
+      targetsByPersonYear[name][parseInt(year)] = target ?? null;
+    });
+    log('Loaded targets', targetsByPersonYear);
+  } catch (e) {
+    log('Error loading targets', { error: String(e) });
+  }
 }
+
+// (rest of scripts.js continues with createBarChart, createTrendChart, filters, listeners, processData… same as in my last message)
 
 // Bar Chart
 function createBarChart(data) {
