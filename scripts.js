@@ -18,18 +18,27 @@ let targetsByPersonYear = {};
 function log(message, data) {
   const debugDiv = document.getElementById('debug');
   const timestamp = new Date().toISOString();
-  debugDiv.textContent = `${timestamp}: ${message}\n` + (data ? JSON.stringify(data, null, 2) : '');
+  debugDiv.textContent =
+    `${timestamp}: ${message}\n` +
+    (data ? JSON.stringify(data, null, 2) : '');
 }
 
 function matchesDepartmentType(department, departmentType) {
   if (!department) return false;
   switch (departmentType) {
-    case 'all': return true;
-    case '3d': return department.toLowerCase().includes('3d');
-    case 'design': return department.toLowerCase().includes('design');
+    case 'all':
+      return true;
+    case '3d':
+      return department.toLowerCase().includes('3d');
+    case 'design':
+      return department.toLowerCase().includes('design');
     case 'custom':
-      return currentFilters.department === 'all' || department === currentFilters.department;
-    default: return true;
+      return (
+        currentFilters.department === 'all' ||
+        department === currentFilters.department
+      );
+    default:
+      return true;
   }
 }
 
@@ -65,95 +74,112 @@ async function loadTargets() {
   }
 }
 
-// (rest of scripts.js continues with createBarChart, createTrendChart, filters, listeners, processData… same as in my last message)
-
-// Bar Chart
+// ===== Charts =====
 function createBarChart(data) {
+  const ctx = document.getElementById('utilizationChart').getContext('2d');
   if (chart) chart.destroy();
-  const ctx = document.getElementById('chart').getContext('2d');
+
+  const datasets = [
+    {
+      label: 'Billable %',
+      data: data.map((d) => d.billable),
+      backgroundColor: '#4CAF50',
+      order: 2,
+    },
+    {
+      label: 'Non-Billable %',
+      data: data.map((d) => d.nonBillable),
+      backgroundColor: '#FF9800',
+      order: 2,
+    },
+  ];
+
+  if (showTarget) {
+    datasets.push({
+      label: 'Target',
+      data: data.map((d) => d.target),
+      type: 'line',
+      borderColor: 'red',
+      borderWidth: 2,
+      borderDash: [5, 5],
+      fill: false,
+      pointRadius: 4,
+      pointStyle: 'circle',
+      order: 1,
+    });
+  }
 
   chart = new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels: data.map(d => d.name),
-      datasets: [
-        { label: 'Billable', data: data.map(d => d.billable), backgroundColor: 'steelblue' },
-        { label: 'Non-Billable', data: data.map(d => d.nonBillable), backgroundColor: 'lightgray' },
-      ].concat(showTarget ? [{
-        label: 'Target',
-        data: data.map(d => d.target),
-        type: 'line',
-        borderColor: 'red',
-        borderDash: [5, 5],
-        fill: false,
-        pointRadius: 5
-      }] : [])
-    },
+    data: { labels: data.map((d) => d.name.trim()), datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      onClick: (evt, elements) => {
-        // Find the bar index that was clicked (prefer the bar datasets)
-        const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
-        if (!points || !points.length) return;
-        // Pick first non-Target dataset to resolve the person name
-        const p = points.find(pt => chart.data.datasets[pt.datasetIndex].type !== 'line') || points[0];
-        const idx = p.index;
-        const name = chart.data.labels[idx];
-        openHistory(name);
-      }
-    }
+      scales: {
+        y: { beginAtZero: true, stacked: false, max: 100 },
+        x: { stacked: false },
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function (context) {
+              const label = context.dataset.label || '';
+              const value = context.parsed.y?.toFixed(1) || 0;
+              return `${label}: ${value}%`;
+            },
+          },
+        },
+        legend: {
+          labels: {
+            filter: (item) =>
+              !item.text.includes('Target') || item.text === 'Target',
+          },
+        },
+      },
+    },
   });
 }
 
-// Debug logger
-function logDebug(msg, data) {
-  const out = document.getElementById('debugOutput');
-  let str = `[${new Date().toLocaleTimeString()}] ${msg}`;
-  if (data !== undefined) {
-    str += " " + JSON.stringify(data, null, 2);
-  }
-  out.value = str + "\n" + out.value; // prepend new logs
-}
-
-// Wire Debug button
-document.getElementById('debugBtn').addEventListener('click', () => {
-  logDebug("Current state", {
-    filters: currentFilters,
-    view: currentView,
-    showTarget,
-    targetsByPersonYear
-  });
-});
-
-// Trend Chart
 function createTrendChart(records) {
+  const ctx = document.getElementById('utilizationChart').getContext('2d');
   if (chart) chart.destroy();
-  const ctx = document.getElementById('chart').getContext('2d');
 
-  const grouped = _.groupBy(records, r => r.Name.trim());
-  const allPeriods = _.uniq(records.map(r => r.Period)).sort();
-
+  const groupedByName = _.groupBy(records, (r) => r.Name.trim());
+  const allPeriods = [...new Set(records.map((r) => `${r.Year} ${r.Quarter}`))].sort();
   const datasets = [];
 
-  _.forEach(grouped, (group, name) => {
-    const data = allPeriods.map(period => {
-      const rec = group.find(r => r.Period === period);
-      return rec ? rec.Billable : null;
+  Object.entries(groupedByName).forEach(([name, personRecords]) => {
+    const sortedRecords = _.sortBy(personRecords, [
+      (r) => r.Year,
+      (r) => r.Quarter.substring(1),
+    ]);
+    datasets.push({
+      label: name,
+      data: allPeriods.map((period) => {
+        const rec = sortedRecords.find(
+          (r) => `${r.Year} ${r.Quarter}` === period
+        );
+        return rec ? rec.Billable : null;
+      }),
+      borderColor: '#4CAF50',
+      backgroundColor: 'rgba(76, 175, 80, 0.1)',
+      tension: 0.1,
+      fill: false,
     });
-    datasets.push({ label: name, data, borderWidth: 2, fill: false });
 
     if (showTarget) {
       datasets.push({
         label: `${name} Target`,
-        data: allPeriods.map(period => {
-          const yearStr = period.split(' ')[0]; // "2026 Q1" -> "2026"
-          return getTargetFor(name, parseInt(yearStr));
+        data: allPeriods.map((period) => {
+          const yearStr = period.split(' ')[0];
+          return getTargetFor(name, yearStr);
         }),
         borderColor: 'red',
+        borderWidth: 2,
         borderDash: [5, 5],
         fill: false,
-        pointRadius: 0
+        pointRadius: 0,
+        hidden: false,
       });
     }
   });
@@ -164,30 +190,175 @@ function createTrendChart(records) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      onClick: (evt) => {
-        // Resolve nearest dataset/point then normalize to the person's name
-        const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
-        if (!points || !points.length) return;
-        const dsLabel = chart.data.datasets[points[0].datasetIndex].label || '';
-        const name = dsLabel.endsWith(' Target') ? dsLabel.replace(/\sTarget$/, '') : dsLabel;
-        openHistory(name);
-      }
-    }
+      scales: {
+        y: {
+          beginAtZero: true,
+          max: 100,
+          title: { display: true, text: 'Billable %' },
+        },
+        x: { title: { display: true, text: 'Time Period' } },
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function (context) {
+              const label = context.dataset.label || '';
+              const value = context.parsed.y?.toFixed(1) || 0;
+              return `${label}: ${value}%`;
+            },
+          },
+        },
+        legend: {
+          labels: {
+            filter: (item) =>
+              !item.text.includes('Target') || item.text === 'Target',
+          },
+        },
+      },
+    },
   });
 }
 
-// Wire modal close
-document.addEventListener('click', (e) => {
-  if (e.target.id === 'closeHistory' || e.target.id === 'historyModal') {
-    closeHistory();
+// ===== UI Wiring =====
+function updateFilters(records) {
+  const years = [...new Set(records.map((r) => r.Year))].sort();
+  const quarters = [...new Set(records.map((r) => r.Quarter))].sort();
+  const departments = [...new Set(records.map((r) => r.Department))].sort();
+  const names = [...new Set(records.map((r) => r.Name.trim()))].sort();
+
+  const yearFilter = document.getElementById('yearFilter');
+  const quarterFilter = document.getElementById('quarterFilter');
+  const departmentFilter = document.getElementById('departmentFilter');
+  const nameFilter = document.getElementById('nameFilter');
+
+  yearFilter.innerHTML = '<option value="all">All Years</option>';
+  quarterFilter.innerHTML = '<option value="all">All Quarters</option>';
+  departmentFilter.innerHTML = '<option value="all">All Departments</option>';
+  nameFilter.innerHTML = '<option value="all">All Names</option>';
+
+  years.forEach((year) => yearFilter.add(new Option(year, year)));
+  quarters.forEach((quarter) => quarterFilter.add(new Option(quarter, quarter)));
+  departments.forEach((dept) => departmentFilter.add(new Option(dept, dept)));
+  names.forEach((name) => nameFilter.add(new Option(name, name)));
+
+  yearFilter.value = currentFilters.year;
+  quarterFilter.value = currentFilters.quarter;
+  departmentFilter.value = currentFilters.department;
+  nameFilter.value = currentFilters.name;
+}
+
+function processData(records) {
+  let filtered = records;
+
+  if (currentFilters.year !== 'all') {
+    filtered = filtered.filter((r) => r.Year === parseInt(currentFilters.year));
   }
+  if (currentFilters.quarter !== 'all') {
+    filtered = filtered.filter((r) => r.Quarter === currentFilters.quarter);
+  }
+
+  filtered = filtered.filter((r) =>
+    matchesDepartmentType(r.Department, currentFilters.departmentType)
+  );
+
+  if (
+    currentFilters.departmentType === 'custom' &&
+    currentFilters.department !== 'all'
+  ) {
+    filtered = filtered.filter((r) => r.Department === currentFilters.department);
+  }
+
+  if (currentFilters.name !== 'all') {
+    filtered = filtered.filter((r) => r.Name.trim() === currentFilters.name);
+  }
+
+  if (currentView === 'bar') {
+    const selectedYear = currentFilters.year;
+    const processed = _.map(
+      _.groupBy(filtered, (r) => r.Name.trim()),
+      (group, name) => ({
+        name,
+        department: group[0].Department,
+        billable: _.meanBy(group, (r) => r.Billable),
+        nonBillable: _.meanBy(group, (r) => r.Non_Billable),
+        target: selectedYear !== 'all' ? getTargetFor(name, selectedYear) : null,
+      })
+    );
+    createBarChart(processed);
+  } else {
+    createTrendChart(filtered);
+  }
+
+  log('Processed data', {
+    originalRecords: records.length,
+    filteredRecords: filtered.length,
+    filters: currentFilters,
+  });
+}
+
+// ===== Grist Init =====
+grist.ready();
+
+document
+  .querySelectorAll('input[name="departmentType"]')
+  .forEach((radio) => {
+    radio.addEventListener('change', (e) => {
+      currentFilters.departmentType = e.target.value;
+      const departmentFilter = document.getElementById('departmentFilter');
+      if (currentFilters.departmentType === 'custom') {
+        departmentFilter.disabled = false;
+      } else {
+        departmentFilter.disabled = true;
+        currentFilters.department = 'all';
+        departmentFilter.value = 'all';
+      }
+      processData(currentRecords);
+    });
+  });
+
+// Other filter listeners
+['year', 'quarter', 'department', 'name'].forEach((filterId) => {
+  document
+    .getElementById(filterId + 'Filter')
+    .addEventListener('change', (e) => {
+      currentFilters[filterId] = e.target.value;
+      processData(currentRecords);
+    });
 });
 
-// Main hook
-grist.onRecords(async records => {
-  await loadTargets();
+// View toggles
+document.getElementById('barView').addEventListener('click', () => {
+  currentView = 'bar';
+  document.getElementById('barView').classList.add('active');
+  document.getElementById('trendView').classList.remove('active');
+  processData(currentRecords);
+});
+
+document.getElementById('trendView').addEventListener('click', () => {
+  currentView = 'trend';
+  document.getElementById('trendView').classList.add('active');
+  document.getElementById('barView').classList.remove('active');
+  processData(currentRecords);
+});
+
+// Show target toggle
+document.getElementById('showTarget').addEventListener('change', (e) => {
+  showTarget = e.target.checked;
+  processData(currentRecords);
+});
+
+// Show debug toggle
+document.getElementById('toggleDebug').addEventListener('change', (e) => {
+  const debugDiv = document.getElementById('debug');
+  debugDiv.style.display = e.target.checked ? 'block' : 'none';
+});
+
+// Records hook
+grist.onRecords(async (records) => {
+  await loadTargets(); // build per-person per-year targets
   currentRecords = records;
   updateFilters(records);
-  document.getElementById('departmentFilter').disabled = true;
+  const departmentFilter = document.getElementById('departmentFilter');
+  departmentFilter.disabled = true; // default since 'all' is selected
   processData(records);
 });
