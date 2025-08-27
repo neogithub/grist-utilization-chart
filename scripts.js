@@ -85,7 +85,7 @@ async function loadTargets() {
     });
 
     // Fetch Utilization Targets
-    const ut = await grist.docApi.fetchTable('Utilization Targets');
+    const ut = await grist.docApi.fetchTable('Utilization_Targets');
     const map = {};
     (ut.id || []).forEach((id, i) => {
       const personId = ut.Person?.[i];
