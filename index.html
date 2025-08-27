@@ -8,21 +8,42 @@
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+  <style>
+    /* Minimal modal styling */
+    #historyModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4);
+      align-items:center; justify-content:center; z-index:9999; }
+    #historyCard { background:#fff; border-radius:10px; max-width:520px; width:92%;
+      box-shadow:0 10px 30px rgba(0,0,0,0.2); overflow:hidden; }
+    #historyCard header { padding:14px 18px; font-weight:700; border-bottom:1px solid #eee; }
+    #historyCard .body { padding:14px 18px; }
+    #historyCard .body table { width:100%; border-collapse:collapse; }
+    #historyCard .body th, #historyCard .body td { padding:8px 10px; border-bottom:1px solid #f0f0f0; text-align:left; }
+    #historyCard footer { display:flex; justify-content:flex-end; gap:10px; padding:12px 18px; border-top:1px solid #eee; }
+    .btn { padding:8px 12px; border-radius:8px; border:1px solid #ddd; background:#f9f9f9; cursor:pointer; }
+    .btn.primary { background:#0a66ff; color:#fff; border-color:#0a66ff; }
+  </style>
 </head>
 <body>
-  <div id="debug" style="display: none;"></div>
   <div class="view-controls">
     <button id="barView" class="active">Bar Chart</button>
     <button id="trendView">Trend Analysis</button>
+
     <div class="checkbox-wrapper">
       <input type="checkbox" id="showTarget" checked>
       <label for="showTarget">Show Target</label>
     </div>
+
     <div class="checkbox-wrapper">
       <input type="checkbox" id="toggleDebug">
       <label for="toggleDebug">Show Debug</label>
     </div>
+
+    <div id="debugButtons" style="margin-left:8px;">
+      <button id="dumpRecords">Dump Records</button>
+      <button id="dumpTargets">Dump Targets</button>
+    </div>
   </div>
+
   <div class="filters">
     <div class="department-radio-buttons">
       <label><input type="radio" name="departmentType" value="all" checked> All Departments</label>
@@ -30,24 +51,37 @@
       <label><input type="radio" name="departmentType" value="design"> Design</label>
       <label><input type="radio" name="departmentType" value="custom"> Custom:</label>
     </div>
-    <select id="yearFilter">
-      <option value="all">All Years</option>
-    </select>
-    <select id="quarterFilter">
-      <option value="all">All Quarters</option>
-    </select>
-    <select id="departmentFilter" disabled>
-      <option value="all">All Departments</option>
-    </select>
-    <select id="nameFilter">
-      <option value="all">All Names</option>
-    </select>
+
+    <select id="yearFilter"><option value="all">All Years</option></select>
+    <select id="quarterFilter"><option value="all">All Quarters</option></select>
+    <select id="departmentFilter" disabled><option value="all">All Departments</option></select>
+    <select id="nameFilter"><option value="all">All Names</option></select>
   </div>
+
   <div class="chart-container">
     <canvas id="utilizationChart"></canvas>
   </div>
 
-  <!-- App script -->
+  <!-- On-page debug console -->
+  <textarea id="debug" style="width:100%;height:180px;margin-top:10px;font-family:monospace;display:none;"></textarea>
+
+  <!-- Target History Modal -->
+  <div id="historyModal">
+    <div id="historyCard" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
+      <header id="historyTitle">Target History</header>
+      <div class="body">
+        <div id="historyPerson" style="font-weight:600; margin-bottom:8px;"></div>
+        <table>
+          <thead><tr><th>Year</th><th>Target</th></tr></thead>
+          <tbody id="historyTable"></tbody>
+        </table>
+      </div>
+      <footer>
+        <button id="closeHistory" class="btn">Close</button>
+      </footer>
+    </div>
+  </div>
+
   <script src="scripts.js"></script>
 </body>
 </html>

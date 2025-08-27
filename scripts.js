@@ -11,128 +11,95 @@ let currentView = 'bar';
 let showTarget = true;
 let chart = null;
 
-// Per-person per-year targets map from "Utilization Targets"
-let targetsByPersonYear = {};
+// Per-person per-year targets pulled from "Utilization Targets"
+let targetsByPersonYear = {};     // { "Adam Craig": { 2024: 60, 2025: 75 }, ... }
 
-// ===== Utilities & Debug =====
-function ensureDebugUI() {
-  // Add buttons + textarea if they don't exist (safe to call multiple times)
-  if (!document.getElementById('debugButtons')) {
-    const controls = document.querySelector('.view-controls') || document.body;
-    const wrap = document.createElement('div');
-    wrap.id = 'debugButtons';
-    wrap.style.marginLeft = '8px';
-    wrap.innerHTML = `
-      <button id="dumpRecords">Dump Records</button>
-      <button id="dumpTargets">Dump Targets</button>
-    `;
-    controls.appendChild(wrap);
-  }
-  if (!document.getElementById('debug')) {
-    const ta = document.createElement('textarea');
-    ta.id = 'debug';
-    ta.style.cssText = 'width:100%;height:180px;margin-top:10px;font-family:monospace;display:none;';
-    document.body.appendChild(ta);
-  }
-  if (!document.getElementById('toggleDebug')) {
-    // If your HTML already has it, this does nothing. If not, add one.
-    const cbWrap = document.createElement('div');
-    cbWrap.className = 'checkbox-wrapper';
-    cbWrap.innerHTML = `
-      <input type="checkbox" id="toggleDebug">
-      <label for="toggleDebug">Show Debug</label>
-    `;
-    (document.querySelector('.view-controls') || document.body).appendChild(cbWrap);
-  }
-  // Button listeners
-  document.getElementById('dumpRecords')?.addEventListener('click', () => {
-    log('Records (sample, normalized)', normalizeRecords(currentRecords).slice(0, 10));
-  });
-  document.getElementById('dumpTargets')?.addEventListener('click', () => {
-    log('Targets Map', targetsByPersonYear);
-  });
-  // Toggle listener
-  document.getElementById('toggleDebug')?.addEventListener('change', (e) => {
-    const dbg = document.getElementById('debug');
-    dbg.style.display = e.target.checked ? 'block' : 'none';
-  });
-}
-
+// ===== Debug helpers =====
 function log(message, data) {
-  ensureDebugUI();
   const out = document.getElementById('debug');
-  const timestamp = new Date().toLocaleTimeString();
-  let line = `[${timestamp}] ${message}`;
+  const ts = new Date().toLocaleTimeString();
+  let line = `[${ts}] ${message}`;
   if (data !== undefined) {
     try { line += '\n' + JSON.stringify(data, null, 2); } catch {}
   }
   out.value = line + '\n\n' + out.value;
 }
 
-// Accepts records that might have Period OR Year/Quarter; returns guaranteed fields.
+// Buttons + toggle
+document.getElementById('dumpRecords').addEventListener('click', () => {
+  log('Records (sample, normalized)', normalizeRecords(currentRecords).slice(0, 10));
+});
+document.getElementById('dumpTargets').addEventListener('click', () => {
+  log('Targets Map', targetsByPersonYear);
+});
+document.getElementById('toggleDebug').addEventListener('change', (e) => {
+  document.getElementById('debug').style.display = e.target.checked ? 'block' : 'none';
+});
+
+// ===== Normalization =====
 function normalizeRecord(r) {
   const n = { ...r };
-  // Prefer explicit Year/Quarter; otherwise derive from Period like "2025 Q1"
-  if (n.Year == null || n.Quarter == null) {
-    const p = (n.Period || '').toString().trim();
-    if (p.includes(' ')) {
-      const [y, q] = p.split(/\s+/, 2);
-      const yNum = parseInt(y, 10);
-      if (!isNaN(yNum)) n.Year = yNum;
-      if (q) n.Quarter = q; // e.g., "Q1"
-    }
+  if ((n.Year == null || n.Quarter == null) && typeof n.Period === 'string') {
+    const [y, q] = n.Period.split(/\s+/, 2);
+    const yNum = parseInt(y, 10);
+    if (!isNaN(yNum)) n.Year = yNum;
+    if (q) n.Quarter = q;
   }
-  // Build Period if missing but Year/Quarter exist
-  if (!n.Period && (n.Year != null && n.Quarter)) {
-    n.Period = `${n.Year} ${n.Quarter}`;
-  }
-  // Normalize name and department to strings
+  if (!n.Period && (n.Year != null && n.Quarter)) n.Period = `${n.Year} ${n.Quarter}`;
   if (n.Name) n.Name = String(n.Name);
   if (n.Department) n.Department = String(n.Department);
+  // Make sure numeric fields are numbers
+  if (n.Billable != null) n.Billable = Number(n.Billable);
+  if (n.Non_Billable != null) n.Non_Billable = Number(n.Non_Billable);
   return n;
 }
-function normalizeRecords(records) { return records.map(normalizeRecord); }
+function normalizeRecords(records) { return (records || []).map(normalizeRecord); }
 
-function matchesDepartmentType(department, departmentType) {
-  if (!department) return false;
-  switch (departmentType) {
-    case 'all': return true;
-    case '3d': return department.toLowerCase().includes('3d');
-    case 'design': return department.toLowerCase().includes('design');
-    case 'custom':
-      return currentFilters.department === 'all' || department === currentFilters.department;
-    default: return true;
-  }
+// ===== Filters logic =====
+function matchesDepartmentType(dept, type) {
+  if (!dept) return false;
+  const d = String(dept).toLowerCase();
+  if (type === 'all') return true;
+  if (type === '3d') return d.includes('3d');
+  if (type === 'design') return d.includes('design');
+  if (type === 'custom') return currentFilters.department === 'all' || dept === currentFilters.department;
+  return true;
 }
 
+// ===== Targets lookup =====
 function getTargetFor(name, year) {
   if (!name || !year || year === 'all') return null;
   const y = parseInt(year, 10);
-  return targetsByPersonYear?.[name.trim()]?.[y] ?? null;
+  const t = targetsByPersonYear?.[String(name).trim()]?.[y];
+  return t != null ? Number(t) : null;
 }
 
-// ===== Load per-year Targets from People + Utilization Targets =====
+// ===== Load People + Utilization Targets tables =====
 async function loadTargets() {
   try {
+    // Fetch People to map rowId -> Name (because Utilization Targets.Person is a Ref)
     const people = await grist.docApi.fetchTable('People');
-    const byId = {};
+    const idToName = {};
     (people.id || []).forEach((id, i) => {
-      byId[id] = (people.Name?.[i] || '').trim();
+      idToName[id] = (people.Name?.[i] || '').trim();
     });
 
+    // Fetch Utilization Targets
     const ut = await grist.docApi.fetchTable('Utilization Targets');
-    targetsByPersonYear = {};
+    const map = {};
     (ut.id || []).forEach((id, i) => {
       const personId = ut.Person?.[i];
       const year = ut.Year?.[i];
       const target = ut.Target?.[i];
-      const name = byId[personId];
-      if (!name || !year) return;
-      if (!targetsByPersonYear[name]) targetsByPersonYear[name] = {};
-      targetsByPersonYear[name][parseInt(year, 10)] = target ?? null;
+      const name = idToName[personId];
+      if (!name || year == null) return;
+      if (!map[name]) map[name] = {};
+      map[name][parseInt(year, 10)] = Number(target);
     });
+    targetsByPersonYear = map;
 
-    log('Loaded targets (count persons)', Object.keys(targetsByPersonYear).length);
+    // Early debug so you can verify immediately
+    log('Loaded targets summary', Object.fromEntries(Object.entries(map).slice(0,5)));
   } catch (e) {
     log('Error loading targets', String(e));
   }
@@ -140,20 +107,20 @@ async function loadTargets() {
 
 // ===== Charts =====
 function createBarChart(data) {
-  const canvas = document.getElementById('utilizationChart');
-  if (!canvas) { log('Canvas not found'); return; }
-  const ctx = canvas.getContext('2d');
+  const ctx = document.getElementById('utilizationChart').getContext('2d');
   if (chart) chart.destroy();
 
-  const datasets = [
-    { label: 'Billable %', data: data.map(d => d.billable), backgroundColor: '#4CAF50', order: 2 },
-    { label: 'Non-Billable %', data: data.map(d => d.nonBillable), backgroundColor: '#FF9800', order: 2 },
+  // Build datasets
+  const base = [
+    { label: 'Billable %',     data: data.map(d => Number(d.billable)),    backgroundColor: '#4CAF50', order: 2 },
+    { label: 'Non-Billable %', data: data.map(d => Number(d.nonBillable)), backgroundColor: '#FF9800', order: 2 },
   ];
 
-  if (showTarget) {
-    datasets.push({
+  const hasYear = currentFilters.year !== 'all';
+  if (showTarget && hasYear) {
+    base.push({
       label: 'Target',
-      data: data.map(d => d.target),
+      data: data.map(d => getTargetFor(d.name, currentFilters.year)),
       type: 'line',
       borderColor: 'red',
       borderWidth: 2,
@@ -167,36 +134,43 @@ function createBarChart(data) {
 
   chart = new Chart(ctx, {
     type: 'bar',
-    data: { labels: data.map(d => d.name.trim()), datasets },
+    data: { labels: data.map(d => d.name.trim()), datasets: base },
     options: {
       responsive: true, maintainAspectRatio: false,
-      scales: { y: { beginAtZero: true, max: 100 }, x: {} },
+      scales: { y: { beginAtZero: true, max: 100 } },
       plugins: {
-        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${(c.parsed.y ?? 0).toFixed(1)}%` } },
-        legend: { labels: { filter: (item) => !item.text.includes('Target') || item.text === 'Target' } }
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${(c.parsed.y ?? 0).toFixed(1)}%` } },
+        legend: { labels: { filter: item => !item.text.includes('Target') || item.text === 'Target' } }
+      },
+      // Click to open history
+      onClick: (evt) => {
+        const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
+        if (!points?.length) return;
+        const p = points.find(pt => chart.data.datasets[pt.datasetIndex].type !== 'line') || points[0];
+        const idx = p.index;
+        const name = chart.data.labels[idx];
+        openHistory(name);
       }
     }
   });
 }
 
 function createTrendChart(records) {
-  const canvas = document.getElementById('utilizationChart');
-  if (!canvas) { log('Canvas not found'); return; }
-  const ctx = canvas.getContext('2d');
+  const ctx = document.getElementById('utilizationChart').getContext('2d');
   if (chart) chart.destroy();
 
-  const groupedByName = _.groupBy(records, r => r.Name.trim());
+  const grouped = _.groupBy(records, r => r.Name.trim());
   const allPeriods = [...new Set(records.map(r => `${r.Year} ${r.Quarter}`))].sort();
   const datasets = [];
 
-  Object.entries(groupedByName).forEach(([name, personRecords]) => {
-    const sorted = _.sortBy(personRecords, [r => r.Year, r => (r.Quarter || '').replace('Q','')]);
+  Object.entries(grouped).forEach(([name, personRecords]) => {
+    const series = allPeriods.map(period => {
+      const rec = personRecords.find(r => `${r.Year} ${r.Quarter}` === period);
+      return rec ? Number(rec.Billable) : null;
+    });
     datasets.push({
       label: name,
-      data: allPeriods.map(period => {
-        const rec = sorted.find(r => `${r.Year} ${r.Quarter}` === period);
-        return rec ? rec.Billable : null;
-      }),
+      data: series,
       borderColor: '#4CAF50',
       backgroundColor: 'rgba(76,175,80,0.1)',
       tension: 0.1,
@@ -229,14 +203,47 @@ function createTrendChart(records) {
         x: { title: { display: true, text: 'Time Period' } }
       },
       plugins: {
-        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${(c.parsed.y ?? 0).toFixed(1)}%` } },
-        legend: { labels: { filter: (item) => !item.text.includes('Target') || item.text === 'Target' } }
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${(c.parsed.y ?? 0).toFixed(1)}%` } },
+        legend: { labels: { filter: item => !item.text.includes('Target') || item.text === 'Target' } }
+      },
+      // Click to open history
+      onClick: (evt) => {
+        const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
+        if (!points?.length) return;
+        const dsLabel = chart.data.datasets[points[0].datasetIndex].label || '';
+        const name = dsLabel.endsWith(' Target') ? dsLabel.replace(/\sTarget$/, '') : dsLabel;
+        openHistory(name);
       }
     }
   });
 }
 
-// ===== UI Wiring =====
+// ===== History modal =====
+function openHistory(name) {
+  if (!name) return;
+  const modal = document.getElementById('historyModal');
+  const tbody = document.getElementById('historyTable');
+  const personEl = document.getElementById('historyPerson');
+  personEl.textContent = name;
+
+  const rows = targetsByPersonYear[name] || {};
+  const years = Object.keys(rows).map(n => parseInt(n,10)).sort((a,b)=>a-b);
+
+  tbody.innerHTML = years.length
+    ? years.map(y => `<tr><td>${y}</td><td>${rows[y] ?? ''}</td></tr>`).join('')
+    : '<tr><td colspan="2" style="color:#999;">No targets found</td></tr>';
+
+  modal.style.display = 'flex';
+}
+function closeHistory() {
+  document.getElementById('historyModal').style.display = 'none';
+}
+document.getElementById('closeHistory').addEventListener('click', closeHistory);
+document.getElementById('historyModal').addEventListener('click', (e) => {
+  if (e.target.id === 'historyModal') closeHistory();
+});
+
+// ===== Filters UI =====
 function updateFilters(recordsRaw) {
   const records = normalizeRecords(recordsRaw);
 
@@ -250,20 +257,15 @@ function updateFilters(recordsRaw) {
   const departmentFilter = document.getElementById('departmentFilter');
   const nameFilter = document.getElementById('nameFilter');
 
-  if (!yearFilter || !quarterFilter || !departmentFilter || !nameFilter) {
-    log('Filter controls not found');
-    return;
-  }
-
   yearFilter.innerHTML = '<option value="all">All Years</option>';
   quarterFilter.innerHTML = '<option value="all">All Quarters</option>';
   departmentFilter.innerHTML = '<option value="all">All Departments</option>';
   nameFilter.innerHTML = '<option value="all">All Names</option>';
 
-  years.forEach(year => yearFilter.add(new Option(year, year)));
+  years.forEach(y => yearFilter.add(new Option(y, y)));
   quarters.forEach(q => quarterFilter.add(new Option(q, q)));
-  departments.forEach(dept => departmentFilter.add(new Option(dept, dept)));
-  names.forEach(name => nameFilter.add(new Option(name, name)));
+  departments.forEach(d => departmentFilter.add(new Option(d, d)));
+  names.forEach(n => nameFilter.add(new Option(n, n)));
 
   yearFilter.value = currentFilters.year;
   quarterFilter.value = currentFilters.quarter;
@@ -271,9 +273,9 @@ function updateFilters(recordsRaw) {
   nameFilter.value = currentFilters.name;
 }
 
+// ===== Processing & rendering =====
 function processData(recordsRaw) {
   const records = normalizeRecords(recordsRaw);
-
   let filtered = records;
 
   if (currentFilters.year !== 'all') {
@@ -288,7 +290,6 @@ function processData(recordsRaw) {
   if (currentFilters.departmentType === 'custom' && currentFilters.department !== 'all') {
     filtered = filtered.filter(r => r.Department === currentFilters.department);
   }
-
   if (currentFilters.name !== 'all') {
     filtered = filtered.filter(r => (r.Name || '').trim() === currentFilters.name);
   }
@@ -299,23 +300,21 @@ function processData(recordsRaw) {
     const processed = _.map(grouped, (group, name) => ({
       name,
       department: group[0]?.Department ?? '',
-      billable: _.meanBy(group, r => r.Billable),
-      nonBillable: _.meanBy(group, r => r.Non_Billable),
+      billable: _.meanBy(group, r => Number(r.Billable)),
+      nonBillable: _.meanBy(group, r => Number(r.Non_Billable)),
       target: selectedYear !== 'all' ? getTargetFor(name, selectedYear) : null
     }));
+    // Debug: first 5 rows to verify targets exist
+    log('Bar processed (first 5)', processed.slice(0,5));
     createBarChart(processed);
   } else {
+    log('Trend processed count', filtered.length);
     createTrendChart(filtered);
   }
-
-  log('Processed', { totalIn: recordsRaw.length, totalAfter: filtered.length, filters: currentFilters });
 }
 
-// ===== Grist Init & Listeners =====
+// ===== Init & listeners =====
 grist.ready();
-
-// Ensure baseline UI and debug tools exist (in case HTML was trimmed)
-ensureDebugUI();
 
 // Department radios
 document.querySelectorAll('input[name="departmentType"]').forEach(radio => {
@@ -335,43 +334,38 @@ document.querySelectorAll('input[name="departmentType"]').forEach(radio => {
 
 // Dropdown listeners
 ['year', 'quarter', 'department', 'name'].forEach(id => {
-  const el = document.getElementById(id + 'Filter');
-  el?.addEventListener('change', (e) => {
+  document.getElementById(id + 'Filter').addEventListener('change', (e) => {
     currentFilters[id] = e.target.value;
     processData(currentRecords);
   });
 });
 
-// View buttons
-document.getElementById('barView')?.addEventListener('click', () => {
+// View toggles
+document.getElementById('barView').addEventListener('click', () => {
   currentView = 'bar';
-  document.getElementById('barView')?.classList.add('active');
-  document.getElementById('trendView')?.classList.remove('active');
+  document.getElementById('barView').classList.add('active');
+  document.getElementById('trendView').classList.remove('active');
   processData(currentRecords);
 });
-document.getElementById('trendView')?.addEventListener('click', () => {
+document.getElementById('trendView').addEventListener('click', () => {
   currentView = 'trend';
-  document.getElementById('trendView')?.classList.add('active');
-  document.getElementById('barView')?.classList.remove('active');
+  document.getElementById('trendView').classList.add('active');
+  document.getElementById('barView').classList.remove('active');
   processData(currentRecords);
 });
 
-// Toggles
-document.getElementById('showTarget')?.addEventListener('change', (e) => {
+// Target toggle
+document.getElementById('showTarget').addEventListener('change', (e) => {
   showTarget = e.target.checked;
   processData(currentRecords);
 });
 
-// Records hook — THIS hydrates the data from Grist
+// Hydrate from Grist
 grist.onRecords(async (records) => {
-  ensureDebugUI();
-  log('onRecords: received', { count: records?.length ?? 0 });
-
-  await loadTargets();   // build per-person per-year map
+  log('onRecords received', { count: records?.length ?? 0 });
+  await loadTargets();
   currentRecords = records || [];
   updateFilters(currentRecords);
-  // By default, department dropdown disabled unless "custom" selected
-  const departmentFilter = document.getElementById('departmentFilter');
-  if (departmentFilter) departmentFilter.disabled = currentFilters.departmentType !== 'custom';
+  document.getElementById('departmentFilter').disabled = currentFilters.departmentType !== 'custom';
   processData(currentRecords);
 });
