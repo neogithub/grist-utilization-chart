@@ -2,6 +2,15 @@
 const PEOPLE_TABLE_ID = 'People';               // adjust if your People table ID differs
 const UTIL_TARGETS_TABLE_ID = 'Utilization_Targets'; // <-- this is your working ID
 
+// ===== Global Error Handler =====
+window.addEventListener('error', (event) => {
+  logError('Uncaught Error', event.error || event);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  logError('Unhandled Promise Rejection', { reason: event.reason });
+});
+
 // ===== State =====
 let currentRecords = [];
 let currentFilters = {
@@ -19,26 +28,91 @@ let chart = null;
 // Per-person per-year targets pulled from "Utilization Targets"
 let targetsByPersonYear = {};     // { "Adam Craig": { 2024: 60, 2025: 75 }, ... }
 
-// ===== Debug helpers =====
+// ===== Enhanced Debug System =====
 function log(message, data) {
-  const out = document.getElementById('debug');
-  const ts = new Date().toLocaleTimeString();
-  let line = `[${ts}] ${message}`;
-  if (data !== undefined) {
-    try { line += '\n' + JSON.stringify(data, null, 2); } catch {}
+  try {
+    const out = document.getElementById('debugOutput');
+    if (!out) {
+      console.log('[DEBUG]', message, data);
+      return;
+    }
+    const ts = new Date().toLocaleTimeString();
+    let line = `[${ts}] ${message}`;
+    if (data !== undefined) {
+      try {
+        line += '\n' + JSON.stringify(data, null, 2);
+      } catch (e) {
+        line += '\n[Error stringifying data: ' + e.message + ']';
+      }
+    }
+    out.value = line + '\n' + '='.repeat(80) + '\n' + out.value;
+    console.log('[DEBUG]', message, data);
+  } catch (e) {
+    console.error('Logging failed:', e);
   }
-  out.value = line + '\n\n' + out.value;
 }
 
-// Buttons + toggle
-document.getElementById('dumpRecords').addEventListener('click', () => {
-  log('Records (sample, normalized)', normalizeRecords(currentRecords).slice(0, 10));
-});
-document.getElementById('dumpTargets').addEventListener('click', () => {
-  log('Targets Map', targetsByPersonYear);
-});
-document.getElementById('toggleDebug').addEventListener('change', (e) => {
-  document.getElementById('debug').style.display = e.target.checked ? 'block' : 'none';
+function logError(context, error) {
+  const errorInfo = {
+    message: error.message,
+    stack: error.stack,
+    context: context
+  };
+  log('❌ ERROR in ' + context, errorInfo);
+  console.error('ERROR in ' + context, error);
+}
+
+// Debug button handlers - wrapped in DOMContentLoaded
+window.addEventListener('DOMContentLoaded', () => {
+  log('🚀 Script loaded, DOM ready');
+
+  // Toggle debug panel
+  const toggleBtn = document.getElementById('toggleDebug');
+  const debugConsole = document.getElementById('debugConsole');
+  if (toggleBtn && debugConsole) {
+    toggleBtn.addEventListener('click', () => {
+      const isVisible = debugConsole.style.display !== 'none';
+      debugConsole.style.display = isVisible ? 'none' : 'block';
+      log(isVisible ? '📦 Debug panel hidden' : '👀 Debug panel shown');
+    });
+  }
+
+  // Clear debug log
+  const clearBtn = document.getElementById('clearDebug');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      const out = document.getElementById('debugOutput');
+      if (out) out.value = '';
+      log('🧹 Debug log cleared');
+    });
+  }
+
+  // Dump records
+  const dumpRecordsBtn = document.getElementById('dumpRecords');
+  if (dumpRecordsBtn) {
+    dumpRecordsBtn.addEventListener('click', () => {
+      log('📊 Current Records (first 10)', normalizeRecords(currentRecords).slice(0, 10));
+      log('📊 Total Records Count', currentRecords.length);
+    });
+  }
+
+  // Dump targets
+  const dumpTargetsBtn = document.getElementById('dumpTargets');
+  if (dumpTargetsBtn) {
+    dumpTargetsBtn.addEventListener('click', () => {
+      log('🎯 Targets Map', targetsByPersonYear);
+    });
+  }
+
+  // Dump filters
+  const dumpFiltersBtn = document.getElementById('dumpFilters');
+  if (dumpFiltersBtn) {
+    dumpFiltersBtn.addEventListener('click', () => {
+      log('🔍 Current Filters', currentFilters);
+      log('📍 Current View', currentView);
+      log('🎯 Show Target', showTarget);
+    });
+  }
 });
 
 // ===== Normalization =====
@@ -229,15 +303,26 @@ function updateLocationFilter(records) {
 // ===== Load People + Utilization Targets tables =====
 async function loadTargets() {
   try {
+    log('📥 Starting loadTargets...');
+    log('📋 People table ID:', PEOPLE_TABLE_ID);
+    log('📋 Targets table ID:', UTIL_TARGETS_TABLE_ID);
+
     // Fetch People to map rowId -> Name (because Utilization Targets.Person is a Ref)
+    log('🔍 Fetching People table...');
     const people = await grist.docApi.fetchTable(PEOPLE_TABLE_ID);
+    log('✅ People table fetched', { rowCount: people.id?.length || 0 });
+
     const idToName = {};
     (people.id || []).forEach((id, i) => {
       idToName[id] = (people.Name?.[i] || '').trim();
     });
+    log('📇 ID to Name map created', { peopleCount: Object.keys(idToName).length });
 
     // Fetch Utilization Targets
+    log('🔍 Fetching Utilization Targets table...');
     const ut = await grist.docApi.fetchTable(UTIL_TARGETS_TABLE_ID);
+    log('✅ Targets table fetched', { rowCount: ut.id?.length || 0 });
+
     const map = {};
     (ut.id || []).forEach((id, i) => {
       const personId = ut.Person?.[i];
@@ -250,27 +335,36 @@ async function loadTargets() {
     });
     targetsByPersonYear = map;
 
-    // Early debug so you can verify immediately
-    log('Loaded targets summary', Object.fromEntries(Object.entries(map).slice(0,5)));
+    log('✅ Targets loaded successfully', {
+      peopleWithTargets: Object.keys(map).length,
+      sample: Object.fromEntries(Object.entries(map).slice(0, 3))
+    });
   } catch (e) {
-    log('Error loading targets', String(e));
+    logError('loadTargets', e);
   }
 }
 
 // ===== Charts =====
 function createBarChart(data) {
-  const ctx = document.getElementById('utilizationChart').getContext('2d');
-  if (chart) chart.destroy();
+  try {
+    log('📊 Creating bar chart', { dataPoints: data.length });
 
-  // Dynamic chart height based on data size
-  const chartContainer = document.getElementById('chartContainer');
-  const dataCount = data.length;
-  let height = 400;
-  if (dataCount <= 10) height = 350;
-  else if (dataCount <= 20) height = 450;
-  else if (dataCount <= 30) height = 550;
-  else height = 650;
-  chartContainer.style.height = height + 'px';
+    const ctx = document.getElementById('utilizationChart').getContext('2d');
+    if (chart) {
+      log('🔄 Destroying existing chart');
+      chart.destroy();
+    }
+
+    // Dynamic chart height based on data size
+    const chartContainer = document.getElementById('chartContainer');
+    const dataCount = data.length;
+    let height = 400;
+    if (dataCount <= 10) height = 350;
+    else if (dataCount <= 20) height = 450;
+    else if (dataCount <= 30) height = 550;
+    else height = 650;
+    chartContainer.style.height = height + 'px';
+    log('📏 Chart height set to', height + 'px');
 
   // Build datasets with color coding
   const billableColors = data.map(d => getColorForTargetAchievement(d.billable, d.target));
@@ -296,27 +390,31 @@ function createBarChart(data) {
     });
   }
 
-  chart = new Chart(ctx, {
-    type: 'bar',
-    data: { labels: data.map(d => d.name.trim()), datasets: base },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: { y: { beginAtZero: true, max: 100 } },
-      plugins: {
-        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${(c.parsed.y ?? 0).toFixed(1)}%` } },
-        legend: { labels: { filter: item => !item.text.includes('Target') || item.text === 'Target' } }
-      },
-      // Click to open history
-      onClick: (evt) => {
-        const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
-        if (!points?.length) return;
-        const p = points.find(pt => chart.data.datasets[pt.datasetIndex].type !== 'line') || points[0];
-        const idx = p.index;
-        const name = chart.data.labels[idx];
-        openHistory(name);
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels: data.map(d => d.name.trim()), datasets: base },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true, max: 100 } },
+        plugins: {
+          tooltip: { callbacks: { label: c => `${c.dataset.label}: ${(c.parsed.y ?? 0).toFixed(1)}%` } },
+          legend: { labels: { filter: item => !item.text.includes('Target') || item.text === 'Target' } }
+        },
+        // Click to open history
+        onClick: (evt) => {
+          const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
+          if (!points?.length) return;
+          const p = points.find(pt => chart.data.datasets[pt.datasetIndex].type !== 'line') || points[0];
+          const idx = p.index;
+          const name = chart.data.labels[idx];
+          openHistory(name);
+        }
       }
-    }
-  });
+    });
+    log('✅ Bar chart created successfully');
+  } catch (e) {
+    logError('createBarChart', e);
+  }
 }
 
 function createTrendChart(records) {
@@ -432,92 +530,154 @@ function updateFilters(recordsRaw) {
 
 // ===== Processing & rendering =====
 function processData(recordsRaw) {
-  const records = normalizeRecords(recordsRaw);
-  let filtered = records;
+  try {
+    log('🔄 Processing data...', {
+      rawRecords: recordsRaw.length,
+      filters: currentFilters,
+      view: currentView
+    });
 
-  // Apply year/quarter filters
-  if (currentFilters.year !== 'all') {
-    filtered = filtered.filter(r => r.Year === parseInt(currentFilters.year, 10));
-  }
-  if (currentFilters.quarter !== 'all') {
-    filtered = filtered.filter(r => r.Quarter === currentFilters.quarter);
-  }
+    const records = normalizeRecords(recordsRaw);
+    let filtered = records;
+    log('📝 Records normalized', { count: records.length });
 
-  // Apply department, location, and name search filters
-  filtered = filtered.filter(matchesFilters);
+    // Apply year/quarter filters
+    if (currentFilters.year !== 'all') {
+      filtered = filtered.filter(r => r.Year === parseInt(currentFilters.year, 10));
+      log('🗓️ Year filter applied', { year: currentFilters.year, remaining: filtered.length });
+    }
+    if (currentFilters.quarter !== 'all') {
+      filtered = filtered.filter(r => r.Quarter === currentFilters.quarter);
+      log('📅 Quarter filter applied', { quarter: currentFilters.quarter, remaining: filtered.length });
+    }
 
-  if (currentView === 'bar') {
-    const selectedYear = currentFilters.year;
-    const grouped = _.groupBy(filtered, r => (r.Name || '').trim());
-    let processed = _.map(grouped, (group, name) => ({
-      name,
-      department: group[0]?.Department ?? '',
-      billable: _.meanBy(group, r => Number(r.Billable)),
-      nonBillable: _.meanBy(group, r => Number(r.Non_Billable)),
-      target: selectedYear !== 'all' ? getTargetFor(name, selectedYear) : null
-    }));
+    // Apply department, location, and name search filters
+    const beforeDeptFilter = filtered.length;
+    filtered = filtered.filter(matchesFilters);
+    log('🏢 Dept/Location/Name filters applied', {
+      before: beforeDeptFilter,
+      after: filtered.length,
+      dept: currentFilters.department,
+      location: currentFilters.location,
+      search: currentFilters.nameSearch
+    });
 
-    // Apply sorting
-    processed = sortData(processed, currentFilters.sort);
+    if (currentView === 'bar') {
+      const selectedYear = currentFilters.year;
+      const grouped = _.groupBy(filtered, r => (r.Name || '').trim());
+      log('👥 Records grouped by name', { uniquePeople: Object.keys(grouped).length });
 
-    // Update summary statistics
-    updateSummaryStats(processed);
+      let processed = _.map(grouped, (group, name) => ({
+        name,
+        department: group[0]?.Department ?? '',
+        billable: _.meanBy(group, r => Number(r.Billable)),
+        nonBillable: _.meanBy(group, r => Number(r.Non_Billable)),
+        target: selectedYear !== 'all' ? getTargetFor(name, selectedYear) : null
+      }));
 
-    // Debug: first 5 rows to verify targets exist
-    log('Bar processed (first 5)', processed.slice(0,5));
-    createBarChart(processed);
-  } else {
-    // Update summary for trend view
-    const grouped = _.groupBy(filtered, r => (r.Name || '').trim());
-    const peopleData = _.map(grouped, (group, name) => ({
-      name,
-      billable: _.meanBy(group, r => Number(r.Billable)),
-      target: currentFilters.year !== 'all' ? getTargetFor(name, currentFilters.year) : null
-    }));
-    updateSummaryStats(peopleData);
+      // Apply sorting
+      processed = sortData(processed, currentFilters.sort);
+      log('🔀 Data sorted', { sortType: currentFilters.sort });
 
-    log('Trend processed count', filtered.length);
-    createTrendChart(filtered);
+      // Update summary statistics
+      updateSummaryStats(processed);
+
+      // Debug: first 5 rows to verify targets exist
+      log('📊 Bar data processed (first 3)', processed.slice(0, 3));
+      createBarChart(processed);
+    } else {
+      // Update summary for trend view
+      const grouped = _.groupBy(filtered, r => (r.Name || '').trim());
+      const peopleData = _.map(grouped, (group, name) => ({
+        name,
+        billable: _.meanBy(group, r => Number(r.Billable)),
+        target: currentFilters.year !== 'all' ? getTargetFor(name, currentFilters.year) : null
+      }));
+      updateSummaryStats(peopleData);
+
+      log('📈 Trend data processed', { recordCount: filtered.length });
+      createTrendChart(filtered);
+    }
+
+    log('✅ Data processing complete');
+  } catch (e) {
+    logError('processData', e);
   }
 }
 
 // ===== Init & listeners =====
-grist.ready();
+log('🎬 Initializing Grist widget...');
+try {
+  grist.ready();
+  log('✅ Grist.ready() called successfully');
+} catch (e) {
+  logError('grist.ready', e);
+}
 
 // Department filter
 document.getElementById('departmentFilter').addEventListener('change', (e) => {
-  currentFilters.department = e.target.value;
-  updateLocationFilter(currentRecords);
-  processData(currentRecords);
+  try {
+    log('🏢 Department filter changed', e.target.value);
+    currentFilters.department = e.target.value;
+    updateLocationFilter(currentRecords);
+    processData(currentRecords);
+  } catch (err) {
+    logError('departmentFilter.change', err);
+  }
 });
 
 // Location filter
 document.getElementById('locationFilter').addEventListener('change', (e) => {
-  currentFilters.location = e.target.value;
-  processData(currentRecords);
+  try {
+    log('📍 Location filter changed', e.target.value);
+    currentFilters.location = e.target.value;
+    processData(currentRecords);
+  } catch (err) {
+    logError('locationFilter.change', err);
+  }
 });
 
 // Year/Quarter filters
 document.getElementById('yearFilter').addEventListener('change', (e) => {
-  currentFilters.year = e.target.value;
-  processData(currentRecords);
+  try {
+    log('🗓️ Year filter changed', e.target.value);
+    currentFilters.year = e.target.value;
+    processData(currentRecords);
+  } catch (err) {
+    logError('yearFilter.change', err);
+  }
 });
 
 document.getElementById('quarterFilter').addEventListener('change', (e) => {
-  currentFilters.quarter = e.target.value;
-  processData(currentRecords);
+  try {
+    log('📅 Quarter filter changed', e.target.value);
+    currentFilters.quarter = e.target.value;
+    processData(currentRecords);
+  } catch (err) {
+    logError('quarterFilter.change', err);
+  }
 });
 
 // Name search
 document.getElementById('nameSearch').addEventListener('input', (e) => {
-  currentFilters.nameSearch = e.target.value;
-  processData(currentRecords);
+  try {
+    log('🔍 Name search changed', e.target.value);
+    currentFilters.nameSearch = e.target.value;
+    processData(currentRecords);
+  } catch (err) {
+    logError('nameSearch.input', err);
+  }
 });
 
 // Sort filter
 document.getElementById('sortFilter').addEventListener('change', (e) => {
-  currentFilters.sort = e.target.value;
-  processData(currentRecords);
+  try {
+    log('🔀 Sort filter changed', e.target.value);
+    currentFilters.sort = e.target.value;
+    processData(currentRecords);
+  } catch (err) {
+    logError('sortFilter.change', err);
+  }
 });
 
 // View toggles
@@ -542,9 +702,27 @@ document.getElementById('showTarget').addEventListener('change', (e) => {
 
 // Hydrate from Grist
 grist.onRecords(async (records) => {
-  log('onRecords received', { count: records?.length ?? 0 });
-  await loadTargets();
-  currentRecords = records || [];
-  updateFilters(currentRecords);
-  processData(currentRecords);
+  try {
+    log('📬 grist.onRecords triggered', { count: records?.length ?? 0 });
+
+    if (!records || records.length === 0) {
+      log('⚠️ No records received from Grist');
+      return;
+    }
+
+    log('📋 Sample record (first one)', records[0]);
+
+    await loadTargets();
+
+    currentRecords = records || [];
+    log('💾 Records saved to currentRecords', { count: currentRecords.length });
+
+    updateFilters(currentRecords);
+    log('🔧 Filters updated');
+
+    processData(currentRecords);
+    log('✅ Initial data processing complete');
+  } catch (e) {
+    logError('grist.onRecords', e);
+  }
 });

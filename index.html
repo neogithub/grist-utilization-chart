@@ -24,6 +24,20 @@
   </style>
 </head>
 <body>
+  <!-- DEBUG PANEL (Always at top) -->
+  <div class="debug-panel">
+    <button id="toggleDebug" class="btn" style="margin-bottom:10px;">🐛 Toggle Debug Panel</button>
+    <div id="debugConsole" style="display:none;">
+      <div style="display:flex; gap:10px; margin-bottom:10px;">
+        <button id="clearDebug" class="btn">Clear Log</button>
+        <button id="dumpRecords" class="btn">Dump Records</button>
+        <button id="dumpTargets" class="btn">Dump Targets</button>
+        <button id="dumpFilters" class="btn">Dump Filters</button>
+      </div>
+      <textarea id="debugOutput" readonly style="width:100%;height:250px;font-family:monospace;font-size:11px;background:#1e1e1e;color:#00ff00;padding:10px;border-radius:4px;"></textarea>
+    </div>
+  </div>
+
   <div class="view-controls">
     <button id="barView" class="active">Bar Chart</button>
     <button id="trendView">Trend Analysis</button>
@@ -31,16 +45,6 @@
     <div class="checkbox-wrapper">
       <input type="checkbox" id="showTarget" checked>
       <label for="showTarget">Show Target</label>
-    </div>
-
-    <div class="checkbox-wrapper">
-      <input type="checkbox" id="toggleDebug">
-      <label for="toggleDebug">Show Debug</label>
-    </div>
-
-    <div id="debugButtons" style="margin-left:8px;">
-      <button id="dumpRecords">Dump Records</button>
-      <button id="dumpTargets">Dump Targets</button>
     </div>
   </div>
 
@@ -122,9 +126,6 @@
   <div class="chart-container" id="chartContainer">
     <canvas id="utilizationChart"></canvas>
   </div>
-
-  <!-- On-page debug console -->
-  <textarea id="debug" style="width:100%;height:180px;margin-top:10px;font-family:monospace;display:none;"></textarea>
 
   <!-- Target History Modal -->
   <div id="historyModal">
