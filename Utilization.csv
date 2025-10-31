@@ -1,0 +1,158 @@
+Year,Name,Quarter,Billable,Department,Non-Billable,Target
+2024,"Miguel Sandler-Espinosa
+",Q1,83,Development,17,80
+2024,Emily Bernardi,Q1,70,Development,30,75
+2024,Evan Buxton,Q1,35,Development,65,50
+2024,Hayley Norman,Q1,48,Design,52,75
+2024,Mark Hickey,Q1,38,Design,62,75
+2024,Massimo Boccuni,Q1,68,Development,32,85
+2024,"Patryk Koceniak
+",Q1,65,Development,35,75
+2024,Adam Craig,Q1,81,Development,19,60
+2024,"Miguel Sandler-Espinosa
+",Q2,65,Development,35,80
+2024,Emily Bernardi,Q2,50,Development,50,75
+2024,Evan Buxton,Q2,28,Development,72,50
+2024,Hayley Norman,Q2,51,Design,49,75
+2024,Mark Hickey,Q2,41,Design,59,75
+2024,Massimo Boccuni,Q2,41,Development,59,85
+2024,"Patryk Koceniak
+",Q2,58,Development,42,75
+2024,Adam Craig,Q2,54,Development,46,60
+2024,"Miguel Sandler-Espinosa
+",Q3,63,Development,37,80
+2024,Emily Bernardi,Q3,44,Development,56,75
+2024,Evan Buxton,Q3,36,Development,64,50
+2024,Hayley Norman,Q3,52,Design,48,75
+2024,Mark Hickey,Q3,54,Design,46,75
+2024,Massimo Boccuni,Q3,33,Development,67,85
+2024,"Patryk Koceniak
+",Q3,57,Development,43,75
+2024,Adam Craig,Q3,50,Development,50,60
+2024,Sarah Zhang,Q3,56,Design,44,80
+2024,"Miguel Sandler-Espinosa
+",Q4,52,Development,48,80
+2024,Emily Bernardi,Q4,47,Development,53,75
+2024,Evan Buxton,Q4,20,Development,80,50
+2024,Hayley Norman,Q4,59,Design,41,75
+2024,Mark Hickey,Q4,52,Design,48,75
+2024,Massimo Boccuni,Q4,41,Development,59,85
+2024,"Patryk Koceniak
+",Q4,58,Development,42,75
+2024,Adam Craig,Q4,50,Development,50,60
+2024,Sarah Zhang,Q4,29,Design,71,80
+2024,Matt Richardson,Q1,14,Realtime,86,75
+2024,Tim Eccleston,Q1,8,Realtime,92,85
+2024,Matt Richardson,Q2,51,Realtime,49,75
+2024,Tim Eccleston,Q2,30,Realtime,70,85
+2024,Matt Richardson,Q3,72,Realtime,28,75
+2024,Tim Eccleston,Q3,67,Realtime,33,85
+2024,Matt Richardson,Q4,57,Realtime,43,75
+2024,Tim Eccleston,Q4,67,Realtime,33,85
+2025,Adam Craig,Q1,80,Development,20,75
+2025,Emily Bernardi,Q1,64,Development,36,75
+2025,Evan Buxton,Q1,18,Development,82,50
+2025,Hayley Norman,Q1,61,Design,39,75
+2025,Mark Hickey,Q1,66,Design,34,75
+2025,Massimo Boccuni,Q1,41,Development,59,85
+2025,"Miguel Sandler-Espinosa
+",Q1,70,Development,30,80
+2025,"Patryk Koceniak
+",Q1,70,Development,30,75
+2025,Sarah Zhang,Q1,63,Design,37,80
+2025,Matt Richardson,Q1,60,Realtime,40,75
+2025,Tim Eccleston,Q1,64,Realtime,36,85
+2025,Emily Dayton,Q1,57,Copy,43,75
+2025,Rachel Schultz,Q1,66,Copy,34,80
+2024,Emily Dayton,Q1,53,Copy,47,75
+2024,Rachel Schultz,Q1,63,Copy,37,80
+2024,Emily Dayton,Q2,49,Copy,51,75
+2024,Rachel Schultz,Q2,55,Copy,45,80
+2024,Emily Dayton,Q3,59,Copy,41,75
+2024,Rachel Schultz,Q3,58,Copy,42,80
+2024,Emily Dayton,Q4,44,Copy,56,75
+2024,Rachel Schultz,Q4,51,Copy,49,80
+2025,Adam Craig,Q2,65,Development,35,75
+2025,Emily Bernardi,Q2,35,Development,65,75
+2025,Evan Buxton,Q2,43,Development,57,50
+2025,Mark Hickey,Q2,63,Design,37,75
+2025,Massimo Boccuni,Q2,63,Development,37,85
+2025,"Patryk Koceniak
+",Q2,52,Development,48,75
+2025,Sarah Zhang,Q2,52,Design,48,80
+2025,Tim Eccleston,Q2,83,Realtime,17,85
+2025,Matt Richardson,Q2,55,Realtime,45,75
+2025,Hayley Norman,Q2,43,Design,57,75
+2025,Emily Dayton,Q2,50,Copy,50,75
+2025,Rachel Schultz,Q2,52,Copy,48,80
+2025,Corey Beaulieu,Q2,61,"3D, BOS",39,75
+2025,Rodrigo Zepeda,Q2,81,"3D, NYC",19,75
+2025,Matt Clarey,Q2,68,"3D, NYC",32,75
+2025,Hao La,Q2,79,"3D, CHI",21,75
+2025,Diego Otero,Q2,77,"3D, COL",23,75
+2025,Konstantin Derbin,Q2,67,"3D, BOS",33,75
+2025,Daniela Bringas,Q2,53,"3D, BOS",47,75
+2025,Shaun Kelly,Q2,78,"3D, NYC",22,80
+2025,Christian Lagarcha,Q2,89,"3D, NYC",11,80
+2025,Freddy Correa,Q2,61,"3D, CHI",39,80
+2025,Jose Perez,Q2,99,"3D, BOS",1,98
+2025,Pamela Nader,Q2,99,"3D, BOS",1,98
+2025,David Escobar,Q2,100,"3D, BOS",0,98
+2025,Enzo Nieto,Q2,99,"3D, CHI",1,98
+2025,John Rodriguez,Q2,100,"3D, COL",0,98
+2025,Julio Melendez,Q2,100,"3D, COL",0,98
+2025,Eduardo Lopez,Q2,100,"3D, COL",0,98
+2025,Konstantin Derbin,Q3,67,"3D, BOS",33,75
+2025,Daniela Bringas,Q3,65,"3D, BOS",35,75
+2025,Corey Beaulieu,Q3,60,"3D, BOS",40,75
+2025,Casey Shenery,Q3,95,Film,5,98
+2025,Enzo Nieto,Q3,100,"3D, CHI",0,98
+2025,Carolina Torres,Q3,74,"3D, NYC",26,98
+2025,Eduardo José López,Q3,92,"3D, NYC",8,98
+2025,John Rodriguez,Q3,100,"3D, COL",0,98
+2025,Julio Melendez,Q3,100,"3D, COL",0,98
+2025,Jose Perez,Q3,96,"3D, BOS",4,98
+2025,Pamela Nader,Q3,96,"3D, BOS",4,98
+2025,David Escobar,Q3,93,"3D, BOS",7,98
+2025,Freddy Correa,Q3,66,"3D, CHI",34,80
+2025,Hao La,Q3,87,"3D, CHI",13,75
+2025,Christian Lagarcha,Q3,100,"3D, NYC",0,80
+2025,Diego Otero,Q3,87,"3D, COL",13,75
+2025,Matt Clarey,Q3,86,"3D, NYC",14,75
+2025,Rodrigo Zepeda,Q3,83,"3D, NYC",17,75
+2025,Shaun Kelly,Q3,71,"3D, NYC",29,80
+2025,Rodrigo Lopez,Q3,30,"Creative, BOS",70,35
+2025,Chad Spaulding,Q3,1,"Creative, CHI",99,35
+2025,Ryan Cohen,Q3,40,"Creative, NY",60,35
+2025,Jason Thompson,Q3,43,"Creative, NY",57,70
+2025,Ali Lindquist,Q3,48,"Design, BOS",52,70
+2025,Raine Ferrin,Q3,74,"Design, BOS",26,80
+2025,Emily Johnston,Q3,65,"Design, CHI",35,75
+2025,Zoey Guo,Q3,67,"Design, CHI",33,85
+2025,Sumayya Alsenan,Q3,65,"Design, NY",35,75
+2025,Gretchen Daly,Q3,36,"PM, BOS",64,85
+2025,Greta Kovach,Q3,71,"PM, CHI",29,75
+2025,Danny Amaro,Q3,62,"PM, NY",38,75
+2025,Emily Dayton,Q3,56,Copy,44,75
+2025,Rachel Schultz,Q3,65,Copy,35,80
+2025,Emily Holden,Q3,35,Digital,65,75
+2025,Fletcher Ewing,Q3,73,Digital,27,80
+2025,Sydney Herman,Q3,8,Digital,92,80
+2025,Jane Cho,Q3,47,Digital,53,70
+2025,Kara Mahlmeister,Q3,45,Digital,55,75
+2025,Massimo Boccuni,Q3,52,Digital,48,
+2025,Dave Parmenter,Q3,62,Film,38,75
+2025,Thomas Perry,Q3,77,Film,23,80
+2025,Adam Craig,Q3,65,Development,35,75
+2025,Emily Bernardi,Q3,47,Development,53,75
+2025,Evan Buxton,Q3,30,Development,70,50
+2025,Hayley Norman,Q3,51,Design,49,75
+2025,Mark Hickey,Q3,64,Design,36,75
+2025,Massimo Boccuni,Q3,52,Development,48,85
+2025,"Patryk Koceniak
+",Q3,60,Development,40,75
+2025,Sarah Zhang,Q3,52,Design,48,80
+2025,Kate Shepard,Q3,19,Strategy,81,75
+2025,Matt Richardson,Q3,63,Realtime,37,75
+2025,Tim Eccleston,Q3,79,Realtime,21,85
+2025,Colin Findley,Q3,61,Realtime,39,80

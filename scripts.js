@@ -8,8 +8,9 @@ let currentFilters = {
   year: 'all',
   quarter: 'all',
   department: 'all',
-  departmentType: 'all',
-  name: 'all'
+  location: 'all',
+  nameSearch: '',
+  sort: 'name-asc'
 };
 let currentView = 'bar';
 let showTarget = true;
@@ -59,14 +60,61 @@ function normalizeRecord(r) {
 }
 function normalizeRecords(records) { return (records || []).map(normalizeRecord); }
 
+// ===== Department/Location Helpers =====
+function parseDepartment(deptString) {
+  if (!deptString) return { dept: null, location: null };
+  const str = String(deptString).trim();
+
+  // Check if it has a comma (location-based department)
+  if (str.includes(',')) {
+    const parts = str.split(',').map(s => s.trim());
+    return { dept: parts[0].toLowerCase(), location: parts[1] };
+  }
+
+  return { dept: str.toLowerCase(), location: null };
+}
+
+function getAvailableLocations(records, deptFilter) {
+  const locations = new Set();
+  records.forEach(r => {
+    const { dept, location } = parseDepartment(r.Department);
+
+    // If filtering by a specific department category, only show locations for that dept
+    if (deptFilter !== 'all') {
+      if (dept && dept === deptFilter && location) {
+        locations.add(location);
+      }
+    } else {
+      // Show all locations
+      if (location) locations.add(location);
+    }
+  });
+
+  return Array.from(locations).sort();
+}
+
 // ===== Filters logic =====
-function matchesDepartmentType(dept, type) {
-  if (!dept) return false;
-  const d = String(dept).toLowerCase();
-  if (type === 'all') return true;
-  if (type === '3d') return d.includes('3d');
-  if (type === 'design') return d.includes('design');
-  if (type === 'custom') return currentFilters.department === 'all' || dept === currentFilters.department;
+function matchesFilters(record) {
+  const { dept, location } = parseDepartment(record.Department);
+
+  // Department filter
+  if (currentFilters.department !== 'all') {
+    const deptMatch = dept === currentFilters.department;
+    if (!deptMatch) return false;
+  }
+
+  // Location filter
+  if (currentFilters.location !== 'all') {
+    if (location !== currentFilters.location) return false;
+  }
+
+  // Name search
+  if (currentFilters.nameSearch) {
+    const name = String(record.Name || '').toLowerCase();
+    const search = currentFilters.nameSearch.toLowerCase();
+    if (!name.includes(search)) return false;
+  }
+
   return true;
 }
 
@@ -76,6 +124,106 @@ function getTargetFor(name, year) {
   const y = parseInt(year, 10);
   const t = targetsByPersonYear?.[String(name).trim()]?.[y];
   return t != null ? Number(t) : null;
+}
+
+// ===== Sorting =====
+function sortData(data, sortType) {
+  const sorted = [...data];
+
+  switch (sortType) {
+    case 'name-asc':
+      return sorted.sort((a, b) => a.name.localeCompare(b.name));
+    case 'name-desc':
+      return sorted.sort((a, b) => b.name.localeCompare(a.name));
+    case 'billable-asc':
+      return sorted.sort((a, b) => a.billable - b.billable);
+    case 'billable-desc':
+      return sorted.sort((a, b) => b.billable - a.billable);
+    case 'target-asc':
+      return sorted.sort((a, b) => {
+        const aVsTarget = a.target ? (a.billable / a.target) : 0;
+        const bVsTarget = b.target ? (b.billable / b.target) : 0;
+        return aVsTarget - bVsTarget;
+      });
+    case 'target-desc':
+      return sorted.sort((a, b) => {
+        const aVsTarget = a.target ? (a.billable / a.target) : 0;
+        const bVsTarget = b.target ? (b.billable / b.target) : 0;
+        return bVsTarget - aVsTarget;
+      });
+    case 'department':
+      return sorted.sort((a, b) => a.department.localeCompare(b.department));
+    default:
+      return sorted;
+  }
+}
+
+// ===== Color coding by target achievement =====
+function getColorForTargetAchievement(billable, target) {
+  if (!target || target === 0) return '#4CAF50'; // Default green if no target
+
+  const achievement = (billable / target) * 100;
+
+  if (achievement >= 100) return '#4CAF50';  // Green: Meeting/exceeding
+  if (achievement >= 90) return '#FFC107';   // Yellow/Amber: Close
+  return '#F44336';                           // Red: Below target
+}
+
+// ===== Summary Statistics =====
+function updateSummaryStats(data) {
+  const peopleCount = data.length;
+  const avgBillable = peopleCount > 0 ? _.meanBy(data, d => d.billable) : 0;
+
+  // Count people meeting target
+  const withTargets = data.filter(d => d.target && d.target > 0);
+  const meetingTarget = withTargets.filter(d => d.billable >= d.target).length;
+  const targetPercent = withTargets.length > 0 ? (meetingTarget / withTargets.length) * 100 : 0;
+
+  // Update UI
+  document.getElementById('statPeopleCount').textContent = peopleCount;
+  document.getElementById('statAvgBillable').textContent = avgBillable.toFixed(1) + '%';
+  document.getElementById('statMeetingTarget').textContent =
+    `${meetingTarget} / ${withTargets.length} (${targetPercent.toFixed(0)}%)`;
+
+  // Show department average if filtered
+  const deptAvgSection = document.getElementById('statDeptAvg');
+  if (currentFilters.department !== 'all' || currentFilters.location !== 'all') {
+    deptAvgSection.style.display = 'flex';
+    document.getElementById('statDeptAvgValue').textContent = avgBillable.toFixed(1) + '%';
+  } else {
+    deptAvgSection.style.display = 'none';
+  }
+
+  // Show/hide color legend based on whether targets are visible
+  const colorLegend = document.querySelector('.color-legend');
+  const hasYear = currentFilters.year !== 'all';
+  if (colorLegend) {
+    colorLegend.style.display = (showTarget && hasYear) ? 'flex' : 'none';
+  }
+}
+
+// ===== Update location dropdown dynamically =====
+function updateLocationFilter(records) {
+  const locations = getAvailableLocations(normalizeRecords(records), currentFilters.department);
+  const locationFilter = document.getElementById('locationFilter');
+
+  // Store current value
+  const currentValue = locationFilter.value;
+
+  // Clear and rebuild
+  locationFilter.innerHTML = '<option value="all">All Locations</option>';
+  locations.forEach(loc => {
+    const opt = new Option(loc, loc);
+    locationFilter.add(opt);
+  });
+
+  // Restore value if still valid
+  if (locations.includes(currentValue)) {
+    locationFilter.value = currentValue;
+  } else {
+    locationFilter.value = 'all';
+    currentFilters.location = 'all';
+  }
 }
 
 // ===== Load People + Utilization Targets tables =====
@@ -114,9 +262,21 @@ function createBarChart(data) {
   const ctx = document.getElementById('utilizationChart').getContext('2d');
   if (chart) chart.destroy();
 
-  // Build datasets
+  // Dynamic chart height based on data size
+  const chartContainer = document.getElementById('chartContainer');
+  const dataCount = data.length;
+  let height = 400;
+  if (dataCount <= 10) height = 350;
+  else if (dataCount <= 20) height = 450;
+  else if (dataCount <= 30) height = 550;
+  else height = 650;
+  chartContainer.style.height = height + 'px';
+
+  // Build datasets with color coding
+  const billableColors = data.map(d => getColorForTargetAchievement(d.billable, d.target));
+
   const base = [
-    { label: 'Billable %',     data: data.map(d => Number(d.billable)),    backgroundColor: '#4CAF50', order: 2 },
+    { label: 'Billable %',     data: data.map(d => Number(d.billable)),    backgroundColor: billableColors, order: 2 },
     { label: 'Non-Billable %', data: data.map(d => Number(d.nonBillable)), backgroundColor: '#FF9800', order: 2 },
   ];
 
@@ -253,28 +413,21 @@ function updateFilters(recordsRaw) {
 
   const years = [...new Set(records.map(r => r.Year).filter(v => v != null))].sort();
   const quarters = [...new Set(records.map(r => r.Quarter).filter(Boolean))].sort();
-  const departments = [...new Set(records.map(r => r.Department).filter(Boolean))].sort();
-  const names = [...new Set(records.map(r => (r.Name || '').trim()).filter(Boolean))].sort();
 
   const yearFilter = document.getElementById('yearFilter');
   const quarterFilter = document.getElementById('quarterFilter');
-  const departmentFilter = document.getElementById('departmentFilter');
-  const nameFilter = document.getElementById('nameFilter');
 
   yearFilter.innerHTML = '<option value="all">All Years</option>';
   quarterFilter.innerHTML = '<option value="all">All Quarters</option>';
-  departmentFilter.innerHTML = '<option value="all">All Departments</option>';
-  nameFilter.innerHTML = '<option value="all">All Names</option>';
 
   years.forEach(y => yearFilter.add(new Option(y, y)));
   quarters.forEach(q => quarterFilter.add(new Option(q, q)));
-  departments.forEach(d => departmentFilter.add(new Option(d, d)));
-  names.forEach(n => nameFilter.add(new Option(n, n)));
 
   yearFilter.value = currentFilters.year;
   quarterFilter.value = currentFilters.quarter;
-  departmentFilter.value = currentFilters.department;
-  nameFilter.value = currentFilters.name;
+
+  // Update location filter
+  updateLocationFilter(recordsRaw);
 }
 
 // ===== Processing & rendering =====
@@ -282,6 +435,7 @@ function processData(recordsRaw) {
   const records = normalizeRecords(recordsRaw);
   let filtered = records;
 
+  // Apply year/quarter filters
   if (currentFilters.year !== 'all') {
     filtered = filtered.filter(r => r.Year === parseInt(currentFilters.year, 10));
   }
@@ -289,29 +443,39 @@ function processData(recordsRaw) {
     filtered = filtered.filter(r => r.Quarter === currentFilters.quarter);
   }
 
-  filtered = filtered.filter(r => matchesDepartmentType(r.Department, currentFilters.departmentType));
-
-  if (currentFilters.departmentType === 'custom' && currentFilters.department !== 'all') {
-    filtered = filtered.filter(r => r.Department === currentFilters.department);
-  }
-  if (currentFilters.name !== 'all') {
-    filtered = filtered.filter(r => (r.Name || '').trim() === currentFilters.name);
-  }
+  // Apply department, location, and name search filters
+  filtered = filtered.filter(matchesFilters);
 
   if (currentView === 'bar') {
     const selectedYear = currentFilters.year;
     const grouped = _.groupBy(filtered, r => (r.Name || '').trim());
-    const processed = _.map(grouped, (group, name) => ({
+    let processed = _.map(grouped, (group, name) => ({
       name,
       department: group[0]?.Department ?? '',
       billable: _.meanBy(group, r => Number(r.Billable)),
       nonBillable: _.meanBy(group, r => Number(r.Non_Billable)),
       target: selectedYear !== 'all' ? getTargetFor(name, selectedYear) : null
     }));
+
+    // Apply sorting
+    processed = sortData(processed, currentFilters.sort);
+
+    // Update summary statistics
+    updateSummaryStats(processed);
+
     // Debug: first 5 rows to verify targets exist
     log('Bar processed (first 5)', processed.slice(0,5));
     createBarChart(processed);
   } else {
+    // Update summary for trend view
+    const grouped = _.groupBy(filtered, r => (r.Name || '').trim());
+    const peopleData = _.map(grouped, (group, name) => ({
+      name,
+      billable: _.meanBy(group, r => Number(r.Billable)),
+      target: currentFilters.year !== 'all' ? getTargetFor(name, currentFilters.year) : null
+    }));
+    updateSummaryStats(peopleData);
+
     log('Trend processed count', filtered.length);
     createTrendChart(filtered);
   }
@@ -320,28 +484,40 @@ function processData(recordsRaw) {
 // ===== Init & listeners =====
 grist.ready();
 
-// Department radios
-document.querySelectorAll('input[name="departmentType"]').forEach(radio => {
-  radio.addEventListener('change', (e) => {
-    currentFilters.departmentType = e.target.value;
-    const departmentFilter = document.getElementById('departmentFilter');
-    if (currentFilters.departmentType === 'custom') {
-      departmentFilter.disabled = false;
-    } else {
-      departmentFilter.disabled = true;
-      currentFilters.department = 'all';
-      departmentFilter.value = 'all';
-    }
-    processData(currentRecords);
-  });
+// Department filter
+document.getElementById('departmentFilter').addEventListener('change', (e) => {
+  currentFilters.department = e.target.value;
+  updateLocationFilter(currentRecords);
+  processData(currentRecords);
 });
 
-// Dropdown listeners
-['year', 'quarter', 'department', 'name'].forEach(id => {
-  document.getElementById(id + 'Filter').addEventListener('change', (e) => {
-    currentFilters[id] = e.target.value;
-    processData(currentRecords);
-  });
+// Location filter
+document.getElementById('locationFilter').addEventListener('change', (e) => {
+  currentFilters.location = e.target.value;
+  processData(currentRecords);
+});
+
+// Year/Quarter filters
+document.getElementById('yearFilter').addEventListener('change', (e) => {
+  currentFilters.year = e.target.value;
+  processData(currentRecords);
+});
+
+document.getElementById('quarterFilter').addEventListener('change', (e) => {
+  currentFilters.quarter = e.target.value;
+  processData(currentRecords);
+});
+
+// Name search
+document.getElementById('nameSearch').addEventListener('input', (e) => {
+  currentFilters.nameSearch = e.target.value;
+  processData(currentRecords);
+});
+
+// Sort filter
+document.getElementById('sortFilter').addEventListener('change', (e) => {
+  currentFilters.sort = e.target.value;
+  processData(currentRecords);
 });
 
 // View toggles
@@ -370,6 +546,5 @@ grist.onRecords(async (records) => {
   await loadTargets();
   currentRecords = records || [];
   updateFilters(currentRecords);
-  document.getElementById('departmentFilter').disabled = currentFilters.departmentType !== 'custom';
   processData(currentRecords);
 });

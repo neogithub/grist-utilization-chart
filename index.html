@@ -45,20 +45,81 @@
   </div>
 
   <div class="filters">
-    <div class="department-radio-buttons">
-      <label><input type="radio" name="departmentType" value="all" checked> All Departments</label>
-      <label><input type="radio" name="departmentType" value="3d"> 3D</label>
-      <label><input type="radio" name="departmentType" value="design"> Design</label>
-      <label><input type="radio" name="departmentType" value="custom"> Custom:</label>
-    </div>
+    <select id="departmentFilter">
+      <option value="all">All Departments</option>
+      <option value="3d">3D (All Locations)</option>
+      <option value="design">Design (All Locations)</option>
+      <option value="creative">Creative (All Locations)</option>
+      <option value="pm">PM (All Locations)</option>
+      <option value="development">Development</option>
+      <option value="digital">Digital</option>
+      <option value="film">Film</option>
+      <option value="strategy">Strategy</option>
+      <option value="realtime">Realtime</option>
+      <option value="copy">Copy</option>
+    </select>
+
+    <select id="locationFilter">
+      <option value="all">All Locations</option>
+    </select>
 
     <select id="yearFilter"><option value="all">All Years</option></select>
     <select id="quarterFilter"><option value="all">All Quarters</option></select>
-    <select id="departmentFilter" disabled><option value="all">All Departments</option></select>
-    <select id="nameFilter"><option value="all">All Names</option></select>
+
+    <input type="text" id="nameSearch" placeholder="Search by name...">
+
+    <select id="sortFilter">
+      <option value="name-asc">Name (A-Z)</option>
+      <option value="name-desc">Name (Z-A)</option>
+      <option value="billable-desc">Billable % (High to Low)</option>
+      <option value="billable-asc">Billable % (Low to High)</option>
+      <option value="target-desc">vs Target (High to Low)</option>
+      <option value="target-asc">vs Target (Low to High)</option>
+      <option value="department">Department</option>
+    </select>
   </div>
 
-  <div class="chart-container">
+  <!-- Summary Statistics Bar -->
+  <div id="summaryStats" class="summary-stats">
+    <div class="stat-item">
+      <span class="stat-label">People:</span>
+      <span id="statPeopleCount" class="stat-value">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Avg Billable:</span>
+      <span id="statAvgBillable" class="stat-value">0%</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Meeting Target:</span>
+      <span id="statMeetingTarget" class="stat-value">0 / 0 (0%)</span>
+    </div>
+    <div class="stat-item" id="statDeptAvg" style="display:none;">
+      <span class="stat-label">Dept Avg:</span>
+      <span id="statDeptAvgValue" class="stat-value">0%</span>
+    </div>
+  </div>
+
+  <!-- Color Legend -->
+  <div class="color-legend">
+    <div class="legend-item">
+      <span class="legend-color" style="background-color: #4CAF50;"></span>
+      <span class="legend-label">Meeting Target (≥100%)</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-color" style="background-color: #FFC107;"></span>
+      <span class="legend-label">Close to Target (90-99%)</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-color" style="background-color: #F44336;"></span>
+      <span class="legend-label">Below Target (<90%)</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-color" style="background-color: #FF9800;"></span>
+      <span class="legend-label">Non-Billable</span>
+    </div>
+  </div>
+
+  <div class="chart-container" id="chartContainer">
     <canvas id="utilizationChart"></canvas>
   </div>
 
