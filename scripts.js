@@ -207,10 +207,23 @@ function matchesFilters(record) {
 
 // ===== Targets lookup =====
 function getTargetFor(name, year) {
-  if (!name || !year || year === 'all') return null;
-  const y = parseInt(year, 10);
-  const t = targetsByPersonYear?.[String(name).trim()]?.[y];
-  return t != null ? Number(t) : null;
+  if (!name) return null;
+
+  const targets = targetsByPersonYear?.[String(name).trim()];
+  if (!targets || Object.keys(targets).length === 0) return null;
+
+  // If specific year requested and target exists for that year, use it
+  if (year && year !== 'all') {
+    const y = parseInt(year, 10);
+    if (targets[y] != null) {
+      return Number(targets[y]);
+    }
+  }
+
+  // Fall back to most recent (latest) target available
+  const years = Object.keys(targets).map(y => parseInt(y, 10)).sort((a, b) => b - a);
+  const latestYear = years[0];
+  return targets[latestYear] != null ? Number(targets[latestYear]) : null;
 }
 
 // ===== Sorting =====
