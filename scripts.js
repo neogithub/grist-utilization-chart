@@ -207,22 +207,39 @@ function matchesFilters(record) {
 
 // ===== Targets lookup =====
 function getTargetFor(name, year) {
-  if (!name) return null;
+  if (!name) {
+    log('⚠️ getTargetFor: no name provided');
+    return null;
+  }
 
-  const targets = targetsByPersonYear?.[String(name).trim()];
-  if (!targets || Object.keys(targets).length === 0) return null;
+  const trimmedName = String(name).trim();
+  const targets = targetsByPersonYear?.[trimmedName];
+
+  if (!targets || Object.keys(targets).length === 0) {
+    log(`⚠️ getTargetFor: no targets found for "${trimmedName}"`);
+    return null;
+  }
 
   // If specific year requested and target exists for that year, use it
   if (year && year !== 'all') {
     const y = parseInt(year, 10);
     if (targets[y] != null) {
+      log(`✅ getTargetFor: "${trimmedName}" year ${y} = ${targets[y]}`);
       return Number(targets[y]);
     }
+
+    // Fall back to most recent (latest) target available
+    const years = Object.keys(targets).map(y => parseInt(y, 10)).sort((a, b) => b - a);
+    const latestYear = years[0];
+    const fallbackTarget = targets[latestYear];
+    log(`⚠️ getTargetFor: "${trimmedName}" no target for ${y}, using ${latestYear} fallback = ${fallbackTarget}`);
+    return fallbackTarget != null ? Number(fallbackTarget) : null;
   }
 
-  // Fall back to most recent (latest) target available
+  // If no specific year, use most recent
   const years = Object.keys(targets).map(y => parseInt(y, 10)).sort((a, b) => b - a);
   const latestYear = years[0];
+  log(`✅ getTargetFor: "${trimmedName}" using latest year ${latestYear} = ${targets[latestYear]}`);
   return targets[latestYear] != null ? Number(targets[latestYear]) : null;
 }
 
