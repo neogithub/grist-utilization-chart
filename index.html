@@ -24,27 +24,36 @@
   </style>
 </head>
 <body>
-  <!-- DEBUG PANEL (Always at top) -->
-  <div class="debug-panel">
-    <button id="toggleDebug" class="btn" style="margin-bottom:10px;">🐛 Toggle Debug Panel</button>
-    <div id="debugConsole" style="display:none;">
-      <div style="display:flex; gap:10px; margin-bottom:10px;">
-        <button id="clearDebug" class="btn">Clear Log</button>
-        <button id="dumpRecords" class="btn">Dump Records</button>
-        <button id="dumpTargets" class="btn">Dump Targets</button>
-        <button id="dumpFilters" class="btn">Dump Filters</button>
-      </div>
-      <textarea id="debugOutput" readonly style="width:100%;height:250px;font-family:monospace;font-size:11px;background:#1e1e1e;color:#00ff00;padding:10px;border-radius:4px;"></textarea>
+  <!-- DEBUG PANEL (Hidden by default, toggle in bottom right) -->
+  <button id="toggleDebug" class="debug-toggle-btn" title="Toggle Debug Panel">🐛</button>
+  <div id="debugPanel" class="debug-panel-hidden">
+    <div class="debug-panel-header">
+      <h3>Debug Console</h3>
+      <button id="closeDebug" class="btn">✕</button>
     </div>
+    <div style="display:flex; gap:10px; margin-bottom:10px;">
+      <button id="clearDebug" class="btn">Clear Log</button>
+      <button id="dumpRecords" class="btn">Dump Records</button>
+      <button id="dumpTargets" class="btn">Dump Targets</button>
+      <button id="dumpFilters" class="btn">Dump Filters</button>
+    </div>
+    <textarea id="debugOutput" readonly style="width:100%;height:250px;font-family:monospace;font-size:11px;background:#1e1e1e;color:#00ff00;padding:10px;border-radius:4px;"></textarea>
   </div>
 
   <div class="view-controls">
     <button id="barView" class="active">Bar Chart</button>
     <button id="trendView">Trend Analysis</button>
+    <button id="compareView">Compare Quarters</button>
+    <button id="allTimeView">All Time Data</button>
 
     <div class="checkbox-wrapper">
       <input type="checkbox" id="showTarget" checked>
       <label for="showTarget">Show Target</label>
+    </div>
+
+    <div class="checkbox-wrapper">
+      <input type="checkbox" id="compactView">
+      <label for="compactView">Compact View</label>
     </div>
   </div>
 
@@ -81,6 +90,23 @@
       <option value="target-asc">vs Target (Low to High)</option>
       <option value="department">Department</option>
     </select>
+
+    <!-- Quarter Comparison Selectors (hidden by default) -->
+    <div id="compareControls" style="display:none;">
+      <label style="font-size:13px; margin-right:5px;">Compare:</label>
+      <select id="compareQuarter1"><option value="">Select Quarter 1</option></select>
+      <label style="font-size:13px; margin:0 5px;">vs</label>
+      <select id="compareQuarter2"><option value="">Select Quarter 2</option></select>
+    </div>
+  </div>
+
+  <!-- Target Achievement Filter (shown when year selected) -->
+  <div id="targetFilter" class="target-filter" style="display:none;">
+    <span style="font-weight:600; margin-right:10px;">Show:</span>
+    <button id="filterAll" class="filter-btn active">All</button>
+    <button id="filterAbove" class="filter-btn filter-above">🟢 Above Target</button>
+    <button id="filterClose" class="filter-btn filter-close">🟡 Close to Target</button>
+    <button id="filterBelow" class="filter-btn filter-below">🔴 Below Target</button>
   </div>
 
   <!-- Summary Statistics Bar -->
@@ -123,8 +149,42 @@
     </div>
   </div>
 
+  <!-- Export Controls -->
+  <div id="exportControls" class="export-controls">
+    <button id="exportImage" class="btn">📷 Export as Image</button>
+    <button id="exportCSV" class="btn">📊 Export as CSV</button>
+  </div>
+
+  <!-- Trend Analysis Helper Message -->
+  <div id="trendHelper" class="trend-helper" style="display:none;">
+    <div class="helper-card">
+      <h3>📈 Trend Analysis - Individual View</h3>
+      <p>To view trends, please <strong>search for a specific person</strong> using the name search box above.</p>
+      <p>This view shows performance over time for individual team members.</p>
+    </div>
+  </div>
+
+  <!-- Chart Container -->
   <div class="chart-container" id="chartContainer">
     <canvas id="utilizationChart"></canvas>
+  </div>
+
+  <!-- All Time Data Table -->
+  <div id="allTimeContainer" class="all-time-container" style="display:none;">
+    <table id="allTimeTable" class="all-time-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Department</th>
+          <th>Period</th>
+          <th>Billable %</th>
+          <th>Non-Billable %</th>
+          <th>Target</th>
+          <th>vs Target</th>
+        </tr>
+      </thead>
+      <tbody id="allTimeTableBody"></tbody>
+    </table>
   </div>
 
   <!-- Target History Modal -->

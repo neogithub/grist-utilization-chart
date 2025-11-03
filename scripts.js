@@ -19,10 +19,14 @@ let currentFilters = {
   department: 'all',
   location: 'all',
   nameSearch: '',
-  sort: 'name-asc'
+  sort: 'name-asc',
+  targetAchievement: 'all', // 'all', 'above', 'close', 'below'
+  compareQ1: '',
+  compareQ2: ''
 };
-let currentView = 'bar';
+let currentView = 'bar'; // 'bar', 'trend', 'compare', 'alltime'
 let showTarget = true;
+let compactView = false;
 let chart = null;
 
 // Per-person per-year targets pulled from "Utilization Targets"
@@ -66,14 +70,22 @@ function logError(context, error) {
 window.addEventListener('DOMContentLoaded', () => {
   log('🚀 Script loaded, DOM ready');
 
-  // Toggle debug panel
+  // Toggle debug panel (floating button)
   const toggleBtn = document.getElementById('toggleDebug');
-  const debugConsole = document.getElementById('debugConsole');
-  if (toggleBtn && debugConsole) {
+  const debugPanel = document.getElementById('debugPanel');
+  const closeDebugBtn = document.getElementById('closeDebug');
+
+  if (toggleBtn && debugPanel) {
     toggleBtn.addEventListener('click', () => {
-      const isVisible = debugConsole.style.display !== 'none';
-      debugConsole.style.display = isVisible ? 'none' : 'block';
-      log(isVisible ? '📦 Debug panel hidden' : '👀 Debug panel shown');
+      debugPanel.classList.toggle('debug-panel-visible');
+      log('👀 Debug panel toggled');
+    });
+  }
+
+  if (closeDebugBtn && debugPanel) {
+    closeDebugBtn.addEventListener('click', () => {
+      debugPanel.classList.remove('debug-panel-visible');
+      log('📦 Debug panel closed');
     });
   }
 
@@ -111,6 +123,7 @@ window.addEventListener('DOMContentLoaded', () => {
       log('🔍 Current Filters', currentFilters);
       log('📍 Current View', currentView);
       log('🎯 Show Target', showTarget);
+      log('🔬 Compact View', compactView);
     });
   }
 });
@@ -232,6 +245,38 @@ function sortData(data, sortType) {
   }
 }
 
+// ===== Target Achievement Filter =====
+function applyTargetAchievementFilter(data) {
+  if (currentFilters.targetAchievement === 'all') return data;
+
+  return data.filter(d => {
+    if (!d.target || d.target === 0) return false;
+    const achievement = (d.billable / d.target) * 100;
+
+    switch (currentFilters.targetAchievement) {
+      case 'above':
+        return achievement >= 100;
+      case 'close':
+        return achievement >= 90 && achievement < 100;
+      case 'below':
+        return achievement < 90;
+      default:
+        return true;
+    }
+  });
+}
+
+// ===== Compact View - Get Display Name =====
+function getDisplayName(fullName) {
+  if (!compactView) return fullName;
+
+  // Generate initials
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+
+  return parts.map(p => p.charAt(0).toUpperCase()).join('');
+}
+
 // ===== Color coding by target achievement =====
 function getColorForTargetAchievement(billable, target) {
   if (!target || target === 0) return '#4CAF50'; // Default green if no target
@@ -241,6 +286,205 @@ function getColorForTargetAchievement(billable, target) {
   if (achievement >= 100) return '#4CAF50';  // Green: Meeting/exceeding
   if (achievement >= 90) return '#FFC107';   // Yellow/Amber: Close
   return '#F44336';                           // Red: Below target
+}
+
+// ===== Export Functions =====
+function exportAsImage() {
+  try {
+    log('📷 Exporting chart as image...');
+    const canvas = document.getElementById('utilizationChart');
+    if (!canvas) {
+      log('❌ Canvas not found');
+      return;
+    }
+
+    const link = document.createElement('a');
+    link.download = `utilization-chart-${new Date().toISOString().split('T')[0]}.png`;
+    link.href = canvas.toDataURL();
+    link.click();
+    log('✅ Image exported successfully');
+  } catch (e) {
+    logError('exportAsImage', e);
+  }
+}
+
+function exportAsCSV() {
+  try {
+    log('📊 Exporting data as CSV...');
+
+    const records = normalizeRecords(currentRecords);
+    let filtered = records;
+
+    // Apply all current filters
+    if (currentFilters.year !== 'all') {
+      filtered = filtered.filter(r => r.Year === parseInt(currentFilters.year, 10));
+    }
+    if (currentFilters.quarter !== 'all') {
+      filtered = filtered.filter(r => r.Quarter === currentFilters.quarter);
+    }
+    filtered = filtered.filter(matchesFilters);
+
+    // Build CSV
+    const headers = ['Name', 'Department', 'Year', 'Quarter', 'Billable %', 'Non-Billable %', 'Target', 'vs Target'];
+    const rows = filtered.map(r => {
+      const target = getTargetFor(r.Name, r.Year);
+      const vsTarget = target ? ((r.Billable / target) * 100).toFixed(1) + '%' : 'N/A';
+      return [
+        r.Name,
+        r.Department,
+        r.Year,
+        r.Quarter,
+        r.Billable,
+        r.Non_Billable,
+        target || 'N/A',
+        vsTarget
+      ];
+    });
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    // Download
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const link = document.createElement('a');
+    link.download = `utilization-data-${new Date().toISOString().split('T')[0]}.csv`;
+    link.href = URL.createObjectURL(blob);
+    link.click();
+
+    log('✅ CSV exported successfully', { rows: filtered.length });
+  } catch (e) {
+    logError('exportAsCSV', e);
+  }
+}
+
+// ===== Compare Quarters View =====
+function createCompareView(records, q1, q2) {
+  try {
+    log('📊 Creating quarter comparison view', { q1, q2 });
+
+    const [year1, quarter1] = q1.split('-Q');
+    const [year2, quarter2] = q2.split('-Q');
+
+    // Filter records for each quarter
+    const q1Records = records.filter(r => r.Year === parseInt(year1) && r.Quarter === `Q${quarter1}`);
+    const q2Records = records.filter(r => r.Year === parseInt(year2) && r.Quarter === `Q${quarter2}`);
+
+    // Group by person
+    const q1Data = _.groupBy(q1Records, r => r.Name.trim());
+    const q2Data = _.groupBy(q2Records, r => r.Name.trim());
+
+    // Get all unique names
+    const allNames = _.uniq([...Object.keys(q1Data), ...Object.keys(q2Data)]).sort();
+
+    // Build comparison data
+    const comparisonData = allNames.map(name => {
+      const q1Bill = q1Data[name] ? _.meanBy(q1Data[name], r => Number(r.Billable)) : 0;
+      const q2Bill = q2Data[name] ? _.meanBy(q2Data[name], r => Number(r.Billable)) : 0;
+      const change = q2Bill - q1Bill;
+
+      return {
+        name,
+        q1: q1Bill,
+        q2: q2Bill,
+        change,
+        department: (q1Data[name] || q2Data[name])[0].Department
+      };
+    });
+
+    // Create grouped bar chart
+    const ctx = document.getElementById('utilizationChart').getContext('2d');
+    if (chart) chart.destroy();
+
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: comparisonData.map(d => getDisplayName(d.name)),
+        datasets: [
+          {
+            label: q1,
+            data: comparisonData.map(d => d.q1),
+            backgroundColor: '#667eea'
+          },
+          {
+            label: q2,
+            data: comparisonData.map(d => d.q2),
+            backgroundColor: '#764ba2'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true, max: 100 } },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              footer: (items) => {
+                const idx = items[0].dataIndex;
+                const change = comparisonData[idx].change;
+                return `Change: ${change >= 0 ? '+' : ''}${change.toFixed(1)}%`;
+              }
+            }
+          }
+        }
+      }
+    });
+
+    log('✅ Compare view created successfully');
+  } catch (e) {
+    logError('createCompareView', e);
+  }
+}
+
+// ===== All Time View =====
+function createAllTimeView(records) {
+  try {
+    log('📋 Creating all-time data table...');
+
+    const tbody = document.getElementById('allTimeTableBody');
+    tbody.innerHTML = '';
+
+    // Sort by name then period
+    const sorted = records.sort((a, b) => {
+      const nameComp = a.Name.localeCompare(b.Name);
+      if (nameComp !== 0) return nameComp;
+      if (a.Year !== b.Year) return a.Year - b.Year;
+      return a.Quarter.localeCompare(b.Quarter);
+    });
+
+    sorted.forEach(r => {
+      const target = getTargetFor(r.Name, r.Year);
+      let vsTargetText = 'N/A';
+      let statusClass = '';
+
+      if (target) {
+        const achievement = (r.Billable / target) * 100;
+        vsTargetText = achievement.toFixed(1) + '%';
+
+        if (achievement >= 100) statusClass = 'status-above';
+        else if (achievement >= 90) statusClass = 'status-close';
+        else statusClass = 'status-below';
+      }
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${r.Name}</td>
+        <td>${r.Department}</td>
+        <td>${r.Year} ${r.Quarter}</td>
+        <td>${r.Billable.toFixed(1)}%</td>
+        <td>${r.Non_Billable.toFixed(1)}%</td>
+        <td>${target || 'N/A'}</td>
+        <td class="${statusClass}">${vsTargetText}</td>
+      `;
+      tbody.appendChild(row);
+    });
+
+    log('✅ All-time table created', { rows: records.length });
+  } catch (e) {
+    logError('createAllTimeView', e);
+  }
 }
 
 // ===== Summary Statistics =====
@@ -392,7 +636,7 @@ function createBarChart(data) {
 
     chart = new Chart(ctx, {
       type: 'bar',
-      data: { labels: data.map(d => d.name.trim()), datasets: base },
+      data: { labels: data.map(d => getDisplayName(d.name.trim())), datasets: base },
       options: {
         responsive: true, maintainAspectRatio: false,
         scales: { y: { beginAtZero: true, max: 100 } },
@@ -418,12 +662,30 @@ function createBarChart(data) {
 }
 
 function createTrendChart(records) {
-  const ctx = document.getElementById('utilizationChart').getContext('2d');
-  if (chart) chart.destroy();
+  try {
+    log('📈 Creating trend chart...');
 
-  const grouped = _.groupBy(records, r => r.Name.trim());
-  const allPeriods = [...new Set(records.map(r => `${r.Year} ${r.Quarter}`))].sort();
-  const datasets = [];
+    // Check if we have exactly one person
+    const uniquePeople = [...new Set(records.map(r => r.Name.trim()))];
+
+    if (uniquePeople.length !== 1) {
+      // Show helper message
+      log('ℹ️ Multiple people selected - showing helper message');
+      document.getElementById('trendHelper').style.display = 'block';
+      document.getElementById('chartContainer').style.display = 'none';
+      return;
+    }
+
+    // Hide helper, show chart
+    document.getElementById('trendHelper').style.display = 'none';
+    document.getElementById('chartContainer').style.display = 'block';
+
+    const ctx = document.getElementById('utilizationChart').getContext('2d');
+    if (chart) chart.destroy();
+
+    const grouped = _.groupBy(records, r => r.Name.trim());
+    const allPeriods = [...new Set(records.map(r => `${r.Year} ${r.Quarter}`))].sort();
+    const datasets = [];
 
   Object.entries(grouped).forEach(([name, personRecords]) => {
     const series = allPeriods.map(period => {
@@ -478,6 +740,11 @@ function createTrendChart(records) {
       }
     }
   });
+
+    log('✅ Trend chart created successfully');
+  } catch (e) {
+    logError('createTrendChart', e);
+  }
 }
 
 // ===== History modal =====
@@ -526,6 +793,34 @@ function updateFilters(recordsRaw) {
 
   // Update location filter
   updateLocationFilter(recordsRaw);
+
+  // Populate compare quarter dropdowns
+  const compareQ1 = document.getElementById('compareQuarter1');
+  const compareQ2 = document.getElementById('compareQuarter2');
+
+  const yearQuarters = [];
+  years.forEach(year => {
+    quarters.forEach(quarter => {
+      // Check if this combo exists in data
+      const exists = records.some(r => r.Year === year && r.Quarter === quarter);
+      if (exists) {
+        yearQuarters.push({ label: `${year} ${quarter}`, value: `${year}-${quarter}` });
+      }
+    });
+  });
+
+  compareQ1.innerHTML = '<option value="">Select Quarter 1</option>';
+  compareQ2.innerHTML = '<option value="">Select Quarter 2</option>';
+
+  yearQuarters.forEach(yq => {
+    compareQ1.add(new Option(yq.label, yq.value));
+    compareQ2.add(new Option(yq.label, yq.value));
+  });
+
+  // Show/hide target filter based on year selection
+  const targetFilter = document.getElementById('targetFilter');
+  const hasYear = currentFilters.year !== 'all';
+  targetFilter.style.display = hasYear ? 'flex' : 'none';
 }
 
 // ===== Processing & rendering =====
@@ -562,7 +857,13 @@ function processData(recordsRaw) {
       search: currentFilters.nameSearch
     });
 
+    // Handle different views
     if (currentView === 'bar') {
+      // Show chart, hide others
+      document.getElementById('chartContainer').style.display = 'block';
+      document.getElementById('allTimeContainer').style.display = 'none';
+      document.getElementById('trendHelper').style.display = 'none';
+
       const selectedYear = currentFilters.year;
       const grouped = _.groupBy(filtered, r => (r.Name || '').trim());
       log('👥 Records grouped by name', { uniquePeople: Object.keys(grouped).length });
@@ -575,6 +876,10 @@ function processData(recordsRaw) {
         target: selectedYear !== 'all' ? getTargetFor(name, selectedYear) : null
       }));
 
+      // Apply target achievement filter
+      processed = applyTargetAchievementFilter(processed);
+      log('🎯 Target filter applied', { remaining: processed.length });
+
       // Apply sorting
       processed = sortData(processed, currentFilters.sort);
       log('🔀 Data sorted', { sortType: currentFilters.sort });
@@ -585,8 +890,11 @@ function processData(recordsRaw) {
       // Debug: first 5 rows to verify targets exist
       log('📊 Bar data processed (first 3)', processed.slice(0, 3));
       createBarChart(processed);
-    } else {
-      // Update summary for trend view
+
+    } else if (currentView === 'trend') {
+      // Trend view - person specific
+      document.getElementById('allTimeContainer').style.display = 'none';
+
       const grouped = _.groupBy(filtered, r => (r.Name || '').trim());
       const peopleData = _.map(grouped, (group, name) => ({
         name,
@@ -597,6 +905,26 @@ function processData(recordsRaw) {
 
       log('📈 Trend data processed', { recordCount: filtered.length });
       createTrendChart(filtered);
+
+    } else if (currentView === 'compare') {
+      // Compare quarters view
+      document.getElementById('chartContainer').style.display = 'block';
+      document.getElementById('allTimeContainer').style.display = 'none';
+      document.getElementById('trendHelper').style.display = 'none';
+
+      if (currentFilters.compareQ1 && currentFilters.compareQ2) {
+        createCompareView(filtered, currentFilters.compareQ1, currentFilters.compareQ2);
+      } else {
+        log('⚠️ Both quarters must be selected for comparison');
+      }
+
+    } else if (currentView === 'alltime') {
+      // All time table view
+      document.getElementById('chartContainer').style.display = 'none';
+      document.getElementById('allTimeContainer').style.display = 'block';
+      document.getElementById('trendHelper').style.display = 'none';
+
+      createAllTimeView(filtered);
     }
 
     log('✅ Data processing complete');
@@ -642,6 +970,8 @@ document.getElementById('yearFilter').addEventListener('change', (e) => {
   try {
     log('🗓️ Year filter changed', e.target.value);
     currentFilters.year = e.target.value;
+    // Update target filter visibility
+    updateFilters(currentRecords);
     processData(currentRecords);
   } catch (err) {
     logError('yearFilter.change', err);
@@ -681,16 +1011,32 @@ document.getElementById('sortFilter').addEventListener('change', (e) => {
 });
 
 // View toggles
+function setActiveView(view) {
+  currentView = view;
+  ['barView', 'trendView', 'compareView', 'allTimeView'].forEach(id => {
+    document.getElementById(id).classList.remove('active');
+  });
+  document.getElementById(view + 'View').classList.add('active');
+
+  // Show/hide compare controls
+  const compareControls = document.getElementById('compareControls');
+  compareControls.style.display = (view === 'compare') ? 'flex' : 'none';
+}
+
 document.getElementById('barView').addEventListener('click', () => {
-  currentView = 'bar';
-  document.getElementById('barView').classList.add('active');
-  document.getElementById('trendView').classList.remove('active');
+  setActiveView('bar');
   processData(currentRecords);
 });
 document.getElementById('trendView').addEventListener('click', () => {
-  currentView = 'trend';
-  document.getElementById('trendView').classList.add('active');
-  document.getElementById('barView').classList.remove('active');
+  setActiveView('trend');
+  processData(currentRecords);
+});
+document.getElementById('compareView').addEventListener('click', () => {
+  setActiveView('compare');
+  processData(currentRecords);
+});
+document.getElementById('allTimeView').addEventListener('click', () => {
+  setActiveView('allTime');
   processData(currentRecords);
 });
 
@@ -699,6 +1045,59 @@ document.getElementById('showTarget').addEventListener('change', (e) => {
   showTarget = e.target.checked;
   processData(currentRecords);
 });
+
+// Compact view toggle
+document.getElementById('compactView').addEventListener('change', (e) => {
+  compactView = e.target.checked;
+  log('🔬 Compact view toggled', compactView);
+  processData(currentRecords);
+});
+
+// Target achievement filter buttons
+document.getElementById('filterAll').addEventListener('click', () => {
+  currentFilters.targetAchievement = 'all';
+  updateTargetFilterButtons();
+  processData(currentRecords);
+});
+document.getElementById('filterAbove').addEventListener('click', () => {
+  currentFilters.targetAchievement = 'above';
+  updateTargetFilterButtons();
+  processData(currentRecords);
+});
+document.getElementById('filterClose').addEventListener('click', () => {
+  currentFilters.targetAchievement = 'close';
+  updateTargetFilterButtons();
+  processData(currentRecords);
+});
+document.getElementById('filterBelow').addEventListener('click', () => {
+  currentFilters.targetAchievement = 'below';
+  updateTargetFilterButtons();
+  processData(currentRecords);
+});
+
+function updateTargetFilterButtons() {
+  ['filterAll', 'filterAbove', 'filterClose', 'filterBelow'].forEach(id => {
+    document.getElementById(id).classList.remove('active');
+  });
+  const activeId = 'filter' + currentFilters.targetAchievement.charAt(0).toUpperCase() + currentFilters.targetAchievement.slice(1);
+  document.getElementById(activeId).classList.add('active');
+}
+
+// Compare quarter selectors
+document.getElementById('compareQuarter1').addEventListener('change', (e) => {
+  currentFilters.compareQ1 = e.target.value;
+  log('📅 Compare Q1 changed', e.target.value);
+  processData(currentRecords);
+});
+document.getElementById('compareQuarter2').addEventListener('change', (e) => {
+  currentFilters.compareQ2 = e.target.value;
+  log('📅 Compare Q2 changed', e.target.value);
+  processData(currentRecords);
+});
+
+// Export buttons
+document.getElementById('exportImage').addEventListener('click', exportAsImage);
+document.getElementById('exportCSV').addEventListener('click', exportAsCSV);
 
 // Hydrate from Grist
 grist.onRecords(async (records) => {
