@@ -155,21 +155,25 @@ function parseDepartment(deptString) {
   // Check if it has a comma (location-based department)
   if (str.includes(',')) {
     const parts = str.split(',').map(s => s.trim());
-    return { dept: parts[0].toLowerCase(), location: parts[1] };
+    return { dept: parts[0].toLowerCase(), location: parts[1], fullDept: str.toLowerCase() };
   }
 
-  return { dept: str.toLowerCase(), location: null };
+  // No comma - standalone department (e.g., "Design (IX)", "Development", etc.)
+  return { dept: str.toLowerCase(), location: null, fullDept: str.toLowerCase() };
 }
 
 function getAvailableLocations(records, deptFilter) {
   const locations = new Set();
   records.forEach(r => {
-    const { dept, location } = parseDepartment(r.Department);
+    const { dept, location, fullDept } = parseDepartment(r.Department);
 
     // If filtering by a specific department category, only show locations for that dept
     if (deptFilter !== 'all') {
-      if (dept && dept === deptFilter && location) {
-        locations.add(location);
+      // Check both exact match (fullDept) and base match (dept)
+      if (fullDept === deptFilter.toLowerCase() || dept === deptFilter.toLowerCase()) {
+        if (location) {
+          locations.add(location);
+        }
       }
     } else {
       // Show all locations
@@ -182,17 +186,32 @@ function getAvailableLocations(records, deptFilter) {
 
 // ===== Filters logic =====
 function matchesFilters(record) {
-  const { dept, location } = parseDepartment(record.Department);
+  const { dept, location, fullDept } = parseDepartment(record.Department);
 
   // Department filter
   if (currentFilters.department !== 'all') {
-    const deptMatch = dept === currentFilters.department;
-    if (!deptMatch) return false;
-  }
+    const filterDept = currentFilters.department.toLowerCase();
 
-  // Location filter
-  if (currentFilters.location !== 'all') {
-    if (location !== currentFilters.location) return false;
+    // First try exact match on full department (handles "Design (IX)", "Development", etc.)
+    if (fullDept === filterDept) {
+      // Exact match - still apply location filter if set
+      if (currentFilters.location !== 'all' && location !== currentFilters.location) {
+        return false;
+      }
+    } else if (dept === filterDept) {
+      // Base department match (handles "Brand" matching "Brand, BOS", etc.)
+      if (currentFilters.location !== 'all' && location !== currentFilters.location) {
+        return false;
+      }
+    } else {
+      // No match
+      return false;
+    }
+  } else {
+    // No department filter, but location filter might be set
+    if (currentFilters.location !== 'all') {
+      if (location !== currentFilters.location) return false;
+    }
   }
 
   // Name search
